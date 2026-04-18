@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🙏 VBS Good Shepherd Church - Attendance & Notes Management</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js" defer></script>
+    <script>
+        // IMPORTANT: Replace these with your actual credentials from Google Cloud Console
+        const GOOGLE_CLIENT_ID = '939715887013-1ht1g3a0pgb24almvduvmu7436ufs8qn.apps.googleusercontent.com';
+        const GOOGLE_SPREADSHEET_ID = '1vskChwN1pt_lL8kPIfdGJVTmj0bxWWN6aXVBc_ja_M0';
+    </script>
+</head>
+<body>
+    <div id="login-section">
+        <h1>🔐 VBS Good Shepherd Church</h1>
+        <h2>Welcome</h2>
+        <p style="text-align: center; color: #666; margin-bottom: 30px;">Select your login type</p>
+        <button onclick="showAdminLogin()" style="width: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">👨‍💼 Admin Login</button>
+        <button onclick="showUserLogin()" style="width: 100%; background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);">👥 User Login</button>
+    </div>
+
+    <div id="admin-login-section" style="display:none;">
+        <h1>👨‍💼 Admin Login</h1>
+        <label for="admin-username">Username:</label>
+        <input type="text" id="admin-username" placeholder="Enter username">
+        <label for="admin-password">Password:</label>
+        <input type="password" id="admin-password" placeholder="Enter password">
+        <button onclick="adminLogin()">🔓 Login</button>
+        <button onclick="backToLoginSelection()">← Back</button>
+    </div>
+
+    <div id="user-login-section" style="display:none;">
+        <h1>👥 User Login</h1>
+        <label for="user-class-select">Select your class:</label>
+        <select id="user-class-select">
+            <option value="">-- Choose a class --</option>
+            <option value="beginners">Beginners</option>
+            <option value="primary">Primary</option>
+            <option value="junior">Junior</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="senior">Senior</option>
+            <option value="teachers">Teachers</option>
+            <option value="volunteers">Volunteers</option>
+        </select>
+        <label for="user-password">Class Password:</label>
+        <input type="password" id="user-password" placeholder="Enter class password">
+        <button onclick="userLogin()">✓ Login</button>
+        <button onclick="backToLoginSelection()">← Back</button>
+    </div>
+
+    <div id="admin-section" style="display:none;">
+        <h1>⚙️ Admin Panel</h1>
+        <h2>🔑 Set Class Passwords</h2>
+        <div id="passwords">
+            <label for="beginners-pwd">Beginners:</label>
+            <input type="password" id="beginners-pwd" placeholder="Set password">
+            <label for="primary-pwd">Primary:</label>
+            <input type="password" id="primary-pwd" placeholder="Set password">
+            <label for="junior-pwd">Junior:</label>
+            <input type="password" id="junior-pwd" placeholder="Set password">
+            <label for="intermediate-pwd">Intermediate:</label>
+            <input type="password" id="intermediate-pwd" placeholder="Set password">
+            <label for="senior-pwd">Senior:</label>
+            <input type="password" id="senior-pwd" placeholder="Set password">
+            <label for="teachers-pwd">Teachers:</label>
+            <input type="password" id="teachers-pwd" placeholder="Set password">
+            <label for="volunteers-pwd">Volunteers:</label>
+            <input type="password" id="volunteers-pwd" placeholder="Set password">
+        </div>
+        <button onclick="savePasswords()">💾 Save Passwords</button>
+        <h2>📚 Select Class</h2>
+        <label for="class-select">Choose a class:</label>
+        <select id="class-select">
+            <option value="beginners">Beginners</option>
+            <option value="primary">Primary</option>
+            <option value="junior">Junior</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="senior">Senior</option>
+            <option value="teachers">Teachers</option>
+            <option value="volunteers">Volunteers</option>
+        </select>
+        <label for="class-pwd">Enter Class Password:</label>
+        <input type="password" id="class-pwd" placeholder="Enter password">
+        <button onclick="accessClass()">✓ Access Class</button>
+        <button onclick="logoutAdmin()" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">🚪 Logout</button>
+    </div>
+
+    <div id="class-section" style="display:none;">
+        <h1>📚 <span id="class-title"></span></h1>
+        <div style="background-color: #e8f5e9; padding: 12px; border-radius: 6px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between;">
+            <span id="google-status" style="color: #2e7d32; font-weight: 600;">📱 Not connected to Google</span>
+            <button onclick="handleAuthClick()" id="google-auth-btn" style="padding: 8px 16px; font-size: 0.9em;">🔗 Connect Google</button>
+        </div>
+        <h2>✓ Attendance</h2>
+        <div style="background-color: #f8f9ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #667eea;">
+            <label for="student-name-input" style="display: block; margin-bottom: 10px; font-weight: 600;">Add New Student:</label>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="student-name-input" placeholder="Enter student name..." style="flex: 1; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1em;">
+                <button onclick="addStudentFromInput()" style="padding: 12px 24px; white-space: nowrap;">➕ Add Student</button>
+            </div>
+        </div>
+        <div id="attendance-list">
+            <!-- Students will be added here -->
+        </div>
+        <button onclick="markAttendance()">✓ Mark Attendance</button>
+        <button onclick="viewAttendanceReport()">📊 View Report</button>
+        <h2>📝 Class Notes</h2>
+        <textarea id="notes" rows="10" placeholder="Enter your class notes here..."></textarea>
+        <button onclick="saveNotes()">💾 Save Notes</button>
+        <button onclick="logoutUser()" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">🚪 Logout</button>
+    </div>
+
+    <div id="attendance-report-section" style="display:none;">
+        <h1>Attendance Report - <span id="report-class-title"></span></h1>
+        <div style="overflow-x: auto; border: 1px solid #ddd; border-radius: 8px;">
+            <table id="attendance-table" border="1">
+                <thead>
+                    <tr>
+                        <th>Student Name</th>
+                    </tr>
+                </thead>
+                <tbody id="attendance-report-body">
+                </tbody>
+            </table>
+        </div>
+        <h3>📊 Statistics</h3>
+        <div style="background-color: #f8f9ff; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <p style="margin: 5px 0;"><span style="color: #4CAF50; font-weight: bold;">✓ = Present</span> | <span style="color: #f44336; font-weight: bold;">✗ = Absent</span> | <span style="color: #999; font-weight: bold;">- = Not on Roll (added on later date)</span></p>
+        </div>
+        <div class="stats-container">
+            <div class="stat-card">
+                <h4>Total Students</h4>
+                <div class="value" id="total-students">0</div>
+            </div>
+            <div class="stat-card">
+                <h4>Present</h4>
+                <div class="value" id="present-count">0</div>
+            </div>
+            <div class="stat-card">
+                <h4>Absent</h4>
+                <div class="value" id="absent-count">0</div>
+            </div>
+            <div class="stat-card">
+                <h4>Attendance Rate</h4>
+                <div class="value" id="attendance-rate">0%</div>
+            </div>
+        </div>
+        <button onclick="downloadAttendanceCSV()">📥 Download as CSV</button>
+        <button onclick="backToClass()">← Back to Class</button>
+        <button onclick="logoutUser()" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">🚪 Logout</button>
+    </div>
+
+    <script src="script.js?v=2"></script>
+    <!-- Google initialization is handled inside script.js -->
+</body>
+</html>
