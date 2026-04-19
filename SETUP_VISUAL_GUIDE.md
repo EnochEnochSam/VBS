@@ -179,13 +179,13 @@ IMPORTANT: Create tabs for each class:
 1. In PowerShell:
    git add .
    git commit -m "Add Google Drive integration"
-   git push origin main
+   git push origin master
 
 2. Go to GitHub repository settings
 3. Click: Pages (left sidebar)
-4. Source: main branch / root folder
+4. Source: master branch / root folder
 5. Wait ~2 minutes
-6. Your site is at: https://[username].github.io/[repo-name]/
+6. Your site is at: https://EnochEnochSam.github.io/VBS/
 ```
 
 **Result**: Live on the web!
@@ -232,7 +232,7 @@ IMPORTANT: Create tabs for each class:
 ## 🔗 Useful Links
 - Google Cloud Console: https://console.cloud.google.com/
 - Google Sheets: https://sheets.google.com
-- Your GitHub Pages: https://[username].github.io/[repo-name]/
+- Your GitHub Pages: https://EnochEnochSam.github.io/VBS/
 
 ---
 

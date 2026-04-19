@@ -372,8 +372,16 @@ function logoutUser() {
     currentClass = '';
 }
 
-function viewAttendanceReport() {
-    const attendanceRecords = JSON.parse(localStorage.getItem(`${currentClass}-attendance-history`) || '[]');
+async function viewAttendanceReport() {
+    // Try to fetch data from Google Sheets first
+    let attendanceRecords = await fetchAttendanceFromGoogleSheets();
+    
+    // If Google Sheets data is not available, use localStorage
+    if (!attendanceRecords) {
+        attendanceRecords = JSON.parse(localStorage.getItem(`${currentClass}-attendance-history`) || '[]');
+        console.log('Using localStorage data for attendance report');
+    }
+    
     document.getElementById('report-class-title').textContent = currentClass.charAt(0).toUpperCase() + currentClass.slice(1);
     
     if (attendanceRecords.length === 0) {
@@ -488,8 +496,16 @@ function removeStudent(index) {
     }
 }
 
-function downloadAttendanceCSV() {
-    const attendanceRecords = JSON.parse(localStorage.getItem(`${currentClass}-attendance-history`) || '[]');
+async function downloadAttendanceCSV() {
+    // Try to fetch data from Google Sheets first
+    let attendanceRecords = await fetchAttendanceFromGoogleSheets();
+    
+    // If Google Sheets data is not available, use localStorage
+    if (!attendanceRecords) {
+        attendanceRecords = JSON.parse(localStorage.getItem(`${currentClass}-attendance-history`) || '[]');
+        console.log('Using localStorage data for CSV download');
+    }
+    
     const className = currentClass.charAt(0).toUpperCase() + currentClass.slice(1);
     
     if (attendanceRecords.length === 0) {
@@ -657,17 +673,57 @@ async function saveAttendanceToGoogleSheets(classData) {
     }
 }
 
-async function createSheetIfNotExists(className) {
-    if (!googleInitialized || !googleAuthToken) return false;
+async function fetchAttendanceFromGoogleSheets() {
+    if (!googleInitialized || !googleAuthToken) {
+        console.log('Google API not ready - using local data only');
+        return null;
+    }
 
     try {
-        const sheetName = className.charAt(0).toUpperCase() + className.slice(1);
+        const sheetName = currentClass.charAt(0).toUpperCase() + currentClass.slice(1);
         
-        // This would require additional setup - for now, create sheets manually
-        console.log(`Create sheet "${sheetName}" in Google Sheets manually for best results`);
-        return true;
+        // Read all data from the sheet
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `${sheetName}!A:D`
+        });
+
+        const values = response.result.values;
+        if (!values || values.length === 0) {
+            console.log('No data found in Google Sheets');
+            return null;
+        }
+
+        // Convert sheet data to attendance records format
+        const attendanceRecords = [];
+        const recordsByDate = {};
+
+        // Skip header row and process data
+        for (let i = 1; i < values.length; i++) {
+            const row = values[i];
+            if (row.length >= 3) {
+                const date = row[0];
+                const studentName = row[1];
+                const status = row[2]; // 'Present' or 'Absent'
+
+                if (!recordsByDate[date]) {
+                    recordsByDate[date] = { date, students: [] };
+                }
+
+                const present = status === 'Present';
+                recordsByDate[date].students.push({ name: studentName, present });
+            }
+        }
+
+        // Convert to array format
+        Object.values(recordsByDate).forEach(record => {
+            attendanceRecords.push(record);
+        });
+
+        console.log('Fetched attendance records from Google Sheets:', attendanceRecords);
+        return attendanceRecords;
     } catch (error) {
-        console.error('Failed to create sheet:', error);
-        return false;
+        console.error('Failed to fetch from Google Sheets:', error);
+        return null;
     }
 }

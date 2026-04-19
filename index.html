@@ -107,7 +107,7 @@
             <!-- Students will be added here -->
         </div>
         <button onclick="markAttendance()">✓ Mark Attendance</button>
-        <button onclick="viewAttendanceReport()">📊 View Report</button>
+        <button onclick="(async () => await viewAttendanceReport())()">📊 View Report</button>
         <h2>📝 Class Notes</h2>
         <textarea id="notes" rows="10" placeholder="Enter your class notes here..."></textarea>
         <button onclick="saveNotes()">💾 Save Notes</button>
@@ -149,7 +149,7 @@
                 <div class="value" id="attendance-rate">0%</div>
             </div>
         </div>
-        <button onclick="downloadAttendanceCSV()">📥 Download as CSV</button>
+        <button onclick="(async () => await downloadAttendanceCSV())()">📥 Download as CSV</button>
         <button onclick="backToClass()">← Back to Class</button>
         <button onclick="logoutUser()" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">🚪 Logout</button>
     </div>
