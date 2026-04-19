@@ -286,3 +286,46 @@ label {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+
+/* Dashboard styles */
+#dashboard-section {
+    background: white;
+    border-radius: 12px;
+    padding: 40px;
+    max-width: 900px;
+    margin: 0 auto;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.dashboard-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 25px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+    transition: transform 0.2s ease;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-5px);
+}
+
+.dashboard-card h3 {
+    font-size: 1.2em;
+    margin-bottom: 15px;
+    opacity: 0.9;
+}
+
+.dashboard-value {
+    font-size: 3em;
+    font-weight: 700;
+    margin: 10px 0;
+    color: #fff;
+}
+
+.dashboard-card p {
+    font-size: 0.9em;
+    opacity: 0.8;
+    margin-top: 10px;
+}

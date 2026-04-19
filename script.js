@@ -30,7 +30,7 @@ function getDateRangeStatus() {
 }
 
 // DOM elements - will be initialized after DOM loads
-let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, notesTextarea, attendanceReportSection, registrationSection, homeGoogleStatus, homeActionButtons, homeGoogleAuthBtn;
+let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, notesTextarea, attendanceReportSection, registrationSection, dashboardSection;
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize DOM elements
@@ -38,15 +38,13 @@ document.addEventListener('DOMContentLoaded', function() {
     adminLoginSection = document.getElementById('admin-login-section');
     userLoginSection = document.getElementById('user-login-section');
     registrationSection = document.getElementById('registration-section');
+    dashboardSection = document.getElementById('dashboard-section');
     adminSection = document.getElementById('admin-section');
     classSection = document.getElementById('class-section');
     classTitle = document.getElementById('class-title');
     attendanceList = document.getElementById('attendance-list');
     notesTextarea = document.getElementById('notes');
     attendanceReportSection = document.getElementById('attendance-report-section');
-    homeGoogleStatus = document.getElementById('home-google-status');
-    homeActionButtons = document.getElementById('home-action-buttons');
-    homeGoogleAuthBtn = document.getElementById('home-google-auth-btn');
     
     console.log('DOM elements initialized');
     
@@ -77,6 +75,7 @@ const CLASS_LIST = ['beginners', 'primary', 'junior', 'intermediate', 'senior', 
 let currentClass = '';
 let isAdminMode = false;
 let classPasswords = {};
+let currentUser = null;
 
 function showAdminLogin() {
     console.log('showAdminLogin called');
@@ -98,10 +97,30 @@ function showRegistration() {
     registrationSection.style.display = 'block';
 }
 
-function updateRoleFields() {
-    const role = document.getElementById('reg-role').value;
-    document.getElementById('class-field').style.display = role === 'volunteer' ? 'block' : 'none';
-    document.getElementById('class-required-field').style.display = role === 'teacher' ? 'block' : 'none';
+function showUserLogin() {
+    loginSection.style.display = 'none';
+    userLoginSection.style.display = 'block';
+}
+
+function showDashboard() {
+    loginSection.style.display = 'none';
+    dashboardSection.style.display = 'block';
+    loadDashboardData();
+}
+
+function backToHome() {
+    registrationSection.style.display = 'none';
+    userLoginSection.style.display = 'none';
+    dashboardSection.style.display = 'none';
+    adminLoginSection.style.display = 'none';
+    adminSection.style.display = 'none';
+    classSection.style.display = 'none';
+    attendanceReportSection.style.display = 'none';
+    loginSection.style.display = 'block';
+}
+
+function connectGoogle() {
+    handleAuthClick();
 }
 
 async function submitRegistration(event) {
@@ -113,7 +132,6 @@ async function submitRegistration(event) {
     const gmail = document.getElementById('reg-gmail').value.trim();
     const password = document.getElementById('reg-password').value;
     const confirmPassword = document.getElementById('reg-confirm-password').value;
-    let selectedClass = '';
 
     if (!fullName || !role || !gmail || !password) {
         alert('❌ Please fill in all required fields.');
@@ -125,22 +143,11 @@ async function submitRegistration(event) {
         return;
     }
 
-    if (role === 'teacher') {
-        selectedClass = document.getElementById('reg-class-required').value;
-        if (!selectedClass) {
-            alert('❌ Teachers must select a class.');
-            return;
-        }
-    } else if (role === 'volunteer') {
-        selectedClass = document.getElementById('reg-class').value || '';
-    }
-
     const registrationData = {
         fullName,
         role,
         gmail,
         password,
-        class: selectedClass,
         status: 'pending',
         timestamp: new Date().toLocaleString()
     };
@@ -150,7 +157,7 @@ async function submitRegistration(event) {
     if (!googleInitialized || !googleAuthToken) {
         alert('✅ Registration saved locally. Connect Google whenever possible to sync it to the sheet.');
         document.querySelector('#registration-section form').reset();
-        backToLoginSelection();
+        backToHome();
         return;
     }
 
@@ -159,11 +166,11 @@ async function submitRegistration(event) {
         removePendingRegistration(registrationData);
         alert('✅ Registration submitted! Your admin will review and approve your request soon.');
         document.querySelector('#registration-section form').reset();
-        backToLoginSelection();
+        backToHome();
     } else {
         alert('✅ Registration saved locally. It will sync once Google is available.');
         document.querySelector('#registration-section form').reset();
-        backToLoginSelection();
+        backToHome();
     }
 }
 
@@ -436,14 +443,7 @@ async function fetchApprovedUserFromSheets(gmail, role) {
 
 
 function backToLoginSelection() {
-    adminLoginSection.style.display = 'none';
-    userLoginSection.style.display = 'none';
-    registrationSection.style.display = 'none';
-    loginSection.style.display = 'block';
-    document.getElementById('admin-username').value = '';
-    document.getElementById('admin-password').value = '';
-    document.getElementById('user-password').value = '';
-    document.getElementById('user-class-select').value = '';
+    backToHome();
 }
 
 async function adminLogin() {
@@ -472,37 +472,60 @@ async function adminLogin() {
 }
 
 async function userLogin() {
-    const selectedClass = document.getElementById('user-class-select').value;
-    const enteredPwd = document.getElementById('user-password').value;
-    
-    if (!selectedClass) {
-        alert('❌ Please select a class.');
+    const role = document.getElementById('user-role').value;
+    const gmail = document.getElementById('user-gmail').value.trim();
+    const password = document.getElementById('user-password').value;
+
+    if (!role) {
+        alert('❌ Please select a role.');
         return;
     }
 
-    let storedPwd = localStorage.getItem(`${selectedClass}-pwd`);
-    let userRole = null;
-    let userEmail = null;
-
-    if (googleAuthToken && googleInitialized) {
-        const remotePasswords = await fetchClassPasswordsFromGoogleSheets();
-        if (remotePasswords) {
-            classPasswords = remotePasswords;
-            storedPwd = remotePasswords[selectedClass] || storedPwd;
+    // Check admin login first
+    if (role === 'admin') {
+        if (gmail.toLowerCase() === ADMIN_USER.toLowerCase() && password === ADMIN_PASS) {
+            userLoginSection.style.display = 'none';
+            adminSection.style.display = 'block';
+            isAdminMode = true;
+            await loadPasswords();
+            document.getElementById('user-gmail').value = '';
+            document.getElementById('user-password').value = '';
+            return;
+        } else {
+            alert('❌ Invalid admin credentials.');
+            return;
         }
     }
 
-    if (enteredPwd === storedPwd) {
-        currentClass = selectedClass;
-        userRole = 'class-user';
-        userLoginSection.style.display = 'none';
-        classSection.style.display = 'block';
-        classTitle.textContent = selectedClass.charAt(0).toUpperCase() + selectedClass.slice(1);
-        setupRoleBasedAccess(userRole, selectedClass);
-        loadClassData();
-        document.getElementById('user-password').value = '';
-    } else {
-        alert('❌ Invalid class password. Please try again.');
+    if (!gmail || !password) {
+        alert('❌ Please fill in Gmail and password.');
+        return;
+    }
+
+    // For other roles, check approved users from Google Sheets
+    if (!googleInitialized || !googleAuthToken) {
+        alert('❌ Google not connected. Please connect Google first to login.');
+        return;
+    }
+
+    try {
+        const user = await fetchApprovedUserFromSheets(gmail, role);
+        if (user && user.password === password) {
+            currentUser = user;
+            currentClass = user.class || role; // Use class if available, otherwise role
+            userLoginSection.style.display = 'none';
+            classSection.style.display = 'block';
+            classTitle.textContent = `${user.fullName} (${role.charAt(0).toUpperCase() + role.slice(1)})`;
+            setupRoleBasedAccess(role, user.class);
+            loadClassData();
+            document.getElementById('user-gmail').value = '';
+            document.getElementById('user-password').value = '';
+        } else {
+            alert('❌ Invalid credentials or user not approved.');
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        alert('❌ Login failed. Please try again.');
     }
 }
 
@@ -871,6 +894,7 @@ function logoutUser() {
     loginSection.style.display = 'block';
     isAdminMode = false;
     currentClass = '';
+    currentUser = null;
 }
 
 async function viewAttendanceReport() {
@@ -1062,22 +1086,25 @@ function setupRoleBasedAccess(userRole, userClass) {
     const markAttendanceBtn = classSection.querySelector('button[onclick*="markAttendance"]');
     const addStudentBtn = classSection.querySelector('button[onclick*="addStudentFromInput"]');
     const saveNotesBtn = classSection.querySelector('button[onclick*="saveNotes"]');
-    
-    switch(userRole) {
-        case 'teacher':
-        case 'volunteer':
-        case 'director':
-        case 'class-user':
-            if (markAttendanceBtn) markAttendanceBtn.style.display = 'block';
-            if (addStudentBtn) addStudentBtn.style.display = 'block';
-            if (saveNotesBtn) saveNotesBtn.style.display = 'block';
-            break;
-        case 'student':
-            if (markAttendanceBtn) markAttendanceBtn.style.display = 'none';
-            if (addStudentBtn) addStudentBtn.style.display = 'none';
-            if (saveNotesBtn) saveNotesBtn.style.display = 'none';
-            break;
+    const viewReportBtn = classSection.querySelector('button[onclick*="viewAttendanceReport"]');
+
+    // Default: all features enabled
+    if (markAttendanceBtn) markAttendanceBtn.style.display = 'inline-block';
+    if (addStudentBtn) addStudentBtn.style.display = 'inline-block';
+    if (saveNotesBtn) saveNotesBtn.style.display = 'inline-block';
+    if (viewReportBtn) viewReportBtn.style.display = 'inline-block';
+
+    // Role-specific restrictions
+    if (userRole === 'student') {
+        // Students can only view reports, not modify
+        if (markAttendanceBtn) markAttendanceBtn.style.display = 'none';
+        if (addStudentBtn) addStudentBtn.style.display = 'none';
+        if (saveNotesBtn) saveNotesBtn.style.display = 'none';
+    } else if (userRole === 'volunteer') {
+        // Volunteers can mark attendance and view reports
+        if (addStudentBtn) addStudentBtn.style.display = 'none';
     }
+    // Teachers and directors have full access
 }
 
 // For Google API integration, add this script tag in HTML: <script src="https://apis.google.com/js/api.js"></script>
@@ -1249,5 +1276,77 @@ async function fetchAttendanceFromGoogleSheets() {
     } catch (error) {
         console.error('Failed to fetch from Google Sheets:', error);
         return null;
+    }
+}
+
+
+
+async function loadDashboardData() {
+    if (!googleInitialized || !googleAuthToken) {
+        document.getElementById('total-students-count').textContent = 'Connect Google first';
+        document.getElementById('total-teachers-count').textContent = 'Connect Google first';
+        document.getElementById('total-volunteers-count').textContent = 'Connect Google first';
+        document.getElementById('today-attendance-count').textContent = 'Connect Google first';
+        return;
+    }
+
+    try {
+        // Load approved users data
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: 'ApprovedUsers!A:F'
+        });
+
+        const rows = response.result.values || [];
+        let students = 0, teachers = 0, volunteers = 0;
+
+        // Count users by role (skip header)
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row.length >= 2) {
+                const role = row[1]?.toString().toLowerCase();
+                if (role === 'student') students++;
+                else if (role === 'teacher') teachers++;
+                else if (role === 'volunteer') volunteers++;
+            }
+        }
+
+        document.getElementById('total-students-count').textContent = students;
+        document.getElementById('total-teachers-count').textContent = teachers;
+        document.getElementById('total-volunteers-count').textContent = volunteers;
+
+        // Load today's attendance count
+        const today = new Date().toLocaleDateString();
+        let todayAttendance = 0;
+
+        // Check all class sheets for today's attendance
+        for (const className of CLASS_LIST) {
+            try {
+                const sheetResponse = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                    range: `${className.charAt(0).toUpperCase() + className.slice(1)}!A:C`
+                });
+
+                const sheetRows = sheetResponse.result.values || [];
+                for (let i = 1; i < sheetRows.length; i++) {
+                    const row = sheetRows[i];
+                    if (row.length >= 3 && row[0] === today && row[2] === 'Present') {
+                        todayAttendance++;
+                    }
+                }
+            } catch (error) {
+                // Sheet might not exist, continue
+                console.log(`Sheet ${className} not found or empty`);
+            }
+        }
+
+        document.getElementById('today-attendance-count').textContent = todayAttendance;
+
+    } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+        document.getElementById('total-students-count').textContent = 'Error';
+        document.getElementById('total-teachers-count').textContent = 'Error';
+        document.getElementById('total-volunteers-count').textContent = 'Error';
+        document.getElementById('today-attendance-count').textContent = 'Error';
     }
 }
