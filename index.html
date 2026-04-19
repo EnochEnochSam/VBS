@@ -16,12 +16,16 @@
 </head>
 <body>
     <div id="login-section">
-        <h1>� VBS Good Shepherd Church</h1>
+        <h1>🙏 VBS Good Shepherd Church</h1>
         <h2>Welcome</h2>
         <p style="text-align: center; color: #666; margin-bottom: 30px;">Choose an option below</p>
+        
+        <div id="home-google-status" style="text-align: center; margin-bottom: 20px; padding: 10px; border-radius: 8px; font-weight: bold; background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7;">
+            ⚠️ Connect Google to enable login and registration.
+        </div>
 
         <div style="display: flex; flex-direction: column; gap: 15px; max-width: 300px; margin: 0 auto;">
-            <button onclick="connectGoogle()" style="width: 100%; background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);">🔗 Connect Google</button>
+            <button onclick="connectGoogle()" id="home-google-auth-btn" style="width: 100%; background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);">🔗 Connect Google</button>
             <button onclick="showRegistration()" style="width: 100%; background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">✏️ New Registration</button>
             <button onclick="showUserLogin()" style="width: 100%; background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);">👤 User Login</button>
             <button onclick="showDashboard()" style="width: 100%; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">📊 Dashboard</button>
