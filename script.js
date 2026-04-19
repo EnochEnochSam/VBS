@@ -98,6 +98,7 @@ function updateRoleFields() {
 
 async function submitRegistration(event) {
     event.preventDefault();
+    console.log('Registration form submitted');
 
     const fullName = document.getElementById('reg-full-name').value.trim();
     const role = document.getElementById('reg-role').value;
@@ -106,6 +107,11 @@ async function submitRegistration(event) {
     const confirmPassword = document.getElementById('reg-confirm-password').value;
     let selectedClass = '';
 
+    if (!fullName || !role || !gmail || !password) {
+        alert('❌ Please fill in all required fields.');
+        return;
+    }
+
     if (password !== confirmPassword) {
         alert('❌ Passwords do not match!');
         return;
@@ -113,6 +119,10 @@ async function submitRegistration(event) {
 
     if (role === 'teacher') {
         selectedClass = document.getElementById('reg-class-required').value;
+        if (!selectedClass) {
+            alert('❌ Teachers must select a class.');
+            return;
+        }
     } else if (role === 'volunteer') {
         selectedClass = document.getElementById('reg-class').value || '';
     }
@@ -127,13 +137,21 @@ async function submitRegistration(event) {
         timestamp: new Date().toLocaleString()
     };
 
+    console.log('Registration data:', registrationData);
+    console.log('Google API status - Initialized:', googleInitialized, 'Token:', !!googleAuthToken);
+
+    if (!googleInitialized || !googleAuthToken) {
+        alert('⚠️ To complete registration, you must first connect to Google:\n\n1. Go back to the login page\n2. Login as User or Admin\n3. Click "Connect Google"\n4. Then come back to register\n\nFor now, your data is ready. Please connect Google and try again.');
+        return;
+    }
+
     const saved = await saveRegistrationToGoogleSheets(registrationData);
     if (saved) {
-        alert('✅ Registration submitted! Waiting for admin approval.');
+        alert('✅ Registration submitted! Your admin will review and approve your request soon.');
         document.querySelector('#registration-section form').reset();
         backToLoginSelection();
     } else {
-        alert('❌ Failed to submit registration. Please try again.');
+        alert('❌ Failed to submit registration. Please ensure Google is connected and try again.');
     }
 }
 
