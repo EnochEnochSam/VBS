@@ -30,7 +30,7 @@ function getDateRangeStatus() {
 }
 
 // DOM elements - will be initialized after DOM loads
-let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, notesTextarea, attendanceReportSection, registrationSection;
+let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, notesTextarea, attendanceReportSection, registrationSection, homeGoogleStatus, homeActionButtons, homeGoogleAuthBtn;
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize DOM elements
@@ -44,13 +44,19 @@ document.addEventListener('DOMContentLoaded', function() {
     attendanceList = document.getElementById('attendance-list');
     notesTextarea = document.getElementById('notes');
     attendanceReportSection = document.getElementById('attendance-report-section');
+    homeGoogleStatus = document.getElementById('home-google-status');
+    homeActionButtons = document.getElementById('home-action-buttons');
+    homeGoogleAuthBtn = document.getElementById('home-google-auth-btn');
     
     console.log('DOM elements initialized');
     
+    // Update home page state before Google API loads
+    updateGoogleStatus();
+
     // Initialize Google API if needed
     if (typeof gapi !== 'undefined') {
         initGoogleAPI().then(() => {
-            if (currentClass) updateGoogleStatus();
+            updateGoogleStatus();
         });
     } else {
         console.log('Google API not loaded yet; waiting until window load.');
@@ -60,8 +66,10 @@ document.addEventListener('DOMContentLoaded', function() {
 window.addEventListener('load', function() {
     if (typeof gapi !== 'undefined' && !googleInitialized) {
         initGoogleAPI().then(() => {
-            if (currentClass) updateGoogleStatus();
+            updateGoogleStatus();
         });
+    } else {
+        updateGoogleStatus();
     }
 });
 
@@ -573,19 +581,47 @@ async function saveClassPasswordsToGoogleSheets(passwordMap) {
 function updateGoogleStatus() {
     const statusEl = document.getElementById('google-status');
     const authBtn = document.getElementById('google-auth-btn');
+
+    const homeStatus = homeGoogleStatus;
+    const homeActions = homeActionButtons;
+    const homeAuth = homeGoogleAuthBtn;
     
     if (googleAuthToken && googleInitialized) {
-        statusEl.textContent = '✅ Connected to Google - Data will auto-sync';
-        statusEl.style.color = '#2e7d32';
-        authBtn.textContent = '🔓 Disconnect Google';
+        if (statusEl) {
+            statusEl.textContent = '✅ Connected to Google - Data will auto-sync';
+            statusEl.style.color = '#2e7d32';
+        }
+        if (authBtn) authBtn.textContent = '🔓 Disconnect Google';
+        if (homeStatus) {
+            homeStatus.textContent = '✅ Google connected. Login and registration enabled.';
+            homeStatus.style.color = '#2e7d32';
+        }
+        if (homeActions) homeActions.style.display = 'flex';
+        if (homeAuth) homeAuth.textContent = '🔓 Disconnect Google';
     } else if (googleInitialized) {
-        statusEl.textContent = '📱 Not connected to Google (data saved locally)';
-        statusEl.style.color = '#f57c00';
-        authBtn.textContent = '🔗 Connect Google';
+        if (statusEl) {
+            statusEl.textContent = '📱 Not connected to Google (data saved locally)';
+            statusEl.style.color = '#f57c00';
+        }
+        if (authBtn) authBtn.textContent = '🔗 Connect Google';
+        if (homeStatus) {
+            homeStatus.textContent = '⚠️ Connect Google to enable login and registration.';
+            homeStatus.style.color = '#f57c00';
+        }
+        if (homeActions) homeActions.style.display = 'none';
+        if (homeAuth) homeAuth.textContent = '🔗 Connect Google';
     } else {
-        statusEl.textContent = '⚠️ Google API not configured';
-        statusEl.style.color = '#c62828';
-        authBtn.disabled = true;
+        if (statusEl) {
+            statusEl.textContent = '⚠️ Google API not configured';
+            statusEl.style.color = '#c62828';
+        }
+        if (authBtn) authBtn.disabled = true;
+        if (homeStatus) {
+            homeStatus.textContent = '⚠️ Google API not configured. Check your setup.';
+            homeStatus.style.color = '#c62828';
+        }
+        if (homeActions) homeActions.style.display = 'none';
+        if (homeAuth) homeAuth.textContent = '🔗 Connect Google';
     }
 }
 

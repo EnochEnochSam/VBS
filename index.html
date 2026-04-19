@@ -18,11 +18,17 @@
     <div id="login-section">
         <h1>🔐 VBS Good Shepherd Church</h1>
         <h2>Welcome</h2>
-        <p style="text-align: center; color: #666; margin-bottom: 30px;">Select your login type</p>
-        <button onclick="showAdminLogin()" style="width: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">👨‍💼 Admin Login</button>
-        <button onclick="showUserLogin()" style="width: 100%; background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);">👥 User Login</button>
-        <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
-        <button onclick="showRegistration()" style="width: 100%; background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">✏️ Register New User</button>
+        <p style="text-align: center; color: #666; margin-bottom: 20px;">Connect Google first to enable login and registration.</p>
+        <div id="home-google-bar" style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 20px;">
+            <span id="home-google-status" style="font-weight: 600; color: #f57c00;">⚠️ Google not connected</span>
+            <button id="home-google-auth-btn" onclick="handleAuthClick()" style="padding: 10px 18px; min-width: 180px;">🔗 Connect Google</button>
+        </div>
+        <div id="home-action-buttons" style="display: none; gap: 12px; flex-direction: column;">
+            <button onclick="showAdminLogin()" style="width: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">👨‍💼 Admin Login</button>
+            <button onclick="showUserLogin()" style="width: 100%; background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);">👥 User Login</button>
+            <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd; width: 100%;">
+            <button onclick="showRegistration()" style="width: 100%; background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">✏️ Register New User</button>
+        </div>
     </div>
 
     <div id="registration-section" style="display:none;">
