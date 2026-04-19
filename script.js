@@ -145,21 +145,25 @@ async function submitRegistration(event) {
         timestamp: new Date().toLocaleString()
     };
 
-    console.log('Registration data:', registrationData);
-    console.log('Google API status - Initialized:', googleInitialized, 'Token:', !!googleAuthToken);
+    addPendingRegistration(registrationData);
 
     if (!googleInitialized || !googleAuthToken) {
-        alert('⚠️ To complete registration, you must first connect to Google:\n\n1. Go back to the login page\n2. Login as User or Admin\n3. Click "Connect Google"\n4. Then come back to register\n\nFor now, your data is ready. Please connect Google and try again.');
+        alert('✅ Registration saved locally. Connect Google whenever possible to sync it to the sheet.');
+        document.querySelector('#registration-section form').reset();
+        backToLoginSelection();
         return;
     }
 
     const saved = await saveRegistrationToGoogleSheets(registrationData);
     if (saved) {
+        removePendingRegistration(registrationData);
         alert('✅ Registration submitted! Your admin will review and approve your request soon.');
         document.querySelector('#registration-section form').reset();
         backToLoginSelection();
     } else {
-        alert('❌ Failed to submit registration. Please ensure Google is connected and try again.');
+        alert('✅ Registration saved locally. It will sync once Google is available.');
+        document.querySelector('#registration-section form').reset();
+        backToLoginSelection();
     }
 }
 
@@ -342,6 +346,59 @@ async function saveRegistrationToGoogleSheets(registrationData) {
     } catch (error) {
         console.error('Failed to save registration:', error);
         return false;
+    }
+}
+
+function getPendingRegistrations() {
+    return JSON.parse(localStorage.getItem('pending-registrations') || '[]');
+}
+
+function savePendingRegistrations(pending) {
+    localStorage.setItem('pending-registrations', JSON.stringify(pending));
+}
+
+function addPendingRegistration(registrationData) {
+    const pending = getPendingRegistrations();
+    pending.push(registrationData);
+    savePendingRegistrations(pending);
+    console.log('Saved pending registration locally', registrationData);
+}
+
+function removePendingRegistration(registrationData) {
+    const pending = getPendingRegistrations();
+    const filtered = pending.filter(item => item.timestamp !== registrationData.timestamp || item.gmail !== registrationData.gmail);
+    savePendingRegistrations(filtered);
+    console.log('Removed pending registration locally', registrationData);
+}
+
+async function syncPendingRegistrationsToGoogleSheets() {
+    const pending = getPendingRegistrations();
+    if (!pending.length || !googleInitialized || !googleAuthToken) {
+        return;
+    }
+
+    try {
+        const values = pending.map(data => [
+            data.fullName,
+            data.role,
+            data.gmail,
+            data.class,
+            data.password,
+            data.status,
+            data.timestamp
+        ]);
+
+        await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: 'Registrations!A:G',
+            valueInputOption: 'RAW',
+            resource: { values }
+        });
+
+        savePendingRegistrations([]);
+        console.log('Synced pending registrations to Google Sheets');
+    } catch (error) {
+        console.error('Failed to sync pending registrations:', error);
     }
 }
 
@@ -1065,6 +1122,7 @@ async function initGoogleAPI() {
                         googleAuthToken = tokenResponse.access_token;
                         gapi.client.setToken({access_token: googleAuthToken});
                         updateGoogleStatus();
+                        syncPendingRegistrationsToGoogleSheets();
                     }
                 });
 
