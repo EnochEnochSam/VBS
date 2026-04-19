@@ -30,13 +30,14 @@ function getDateRangeStatus() {
 }
 
 // DOM elements - will be initialized after DOM loads
-let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, notesTextarea, attendanceReportSection;
+let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, notesTextarea, attendanceReportSection, registrationSection;
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize DOM elements
     loginSection = document.getElementById('login-section');
     adminLoginSection = document.getElementById('admin-login-section');
     userLoginSection = document.getElementById('user-login-section');
+    registrationSection = document.getElementById('registration-section');
     adminSection = document.getElementById('admin-section');
     classSection = document.getElementById('class-section');
     classTitle = document.getElementById('class-title');
@@ -64,8 +65,10 @@ window.addEventListener('load', function() {
     }
 });
 
+const CLASS_LIST = ['beginners', 'primary', 'junior', 'intermediate', 'senior', 'teachers', 'volunteers'];
 let currentClass = '';
 let isAdminMode = false;
+let classPasswords = {};
 
 function showAdminLogin() {
     console.log('showAdminLogin called');
@@ -82,9 +85,277 @@ function showUserLogin() {
     userLoginSection.style.display = 'block';
 }
 
+function showRegistration() {
+    loginSection.style.display = 'none';
+    registrationSection.style.display = 'block';
+}
+
+function updateRoleFields() {
+    const role = document.getElementById('reg-role').value;
+    document.getElementById('class-field').style.display = role === 'volunteer' ? 'block' : 'none';
+    document.getElementById('class-required-field').style.display = role === 'teacher' ? 'block' : 'none';
+}
+
+async function submitRegistration(event) {
+    event.preventDefault();
+
+    const fullName = document.getElementById('reg-full-name').value.trim();
+    const role = document.getElementById('reg-role').value;
+    const gmail = document.getElementById('reg-gmail').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const confirmPassword = document.getElementById('reg-confirm-password').value;
+    let selectedClass = '';
+
+    if (password !== confirmPassword) {
+        alert('❌ Passwords do not match!');
+        return;
+    }
+
+    if (role === 'teacher') {
+        selectedClass = document.getElementById('reg-class-required').value;
+    } else if (role === 'volunteer') {
+        selectedClass = document.getElementById('reg-class').value || '';
+    }
+
+    const registrationData = {
+        fullName,
+        role,
+        gmail,
+        password,
+        class: selectedClass,
+        status: 'pending',
+        timestamp: new Date().toLocaleString()
+    };
+
+    const saved = await saveRegistrationToGoogleSheets(registrationData);
+    if (saved) {
+        alert('✅ Registration submitted! Waiting for admin approval.');
+        document.querySelector('#registration-section form').reset();
+        backToLoginSelection();
+    } else {
+        alert('❌ Failed to submit registration. Please try again.');
+    }
+}
+
+function showAdminTab(tab) {
+    document.getElementById('admin-passwords-section').style.display = tab === 'passwords' ? 'block' : 'none';
+    document.getElementById('admin-requests-section').style.display = tab === 'requests' ? 'block' : 'none';
+    document.getElementById('admin-class-section').style.display = tab === 'class' ? 'block' : 'none';
+
+    const tabs = ['admin-tab-passwords', 'admin-tab-requests', 'admin-tab-class'];
+    tabs.forEach(t => {
+        const btn = document.getElementById(t);
+        if (btn) btn.style.opacity = '0.7';
+    });
+    
+    const activeTab = ['admin-tab-passwords', 'admin-tab-requests', 'admin-tab-class'][['passwords', 'requests', 'class'].indexOf(tab)];
+    if (document.getElementById(activeTab)) {
+        document.getElementById(activeTab).style.opacity = '1';
+    }
+
+    if (tab === 'requests') {
+        loadRegistrationRequests();
+    }
+}
+
+async function loadRegistrationRequests() {
+    if (!googleInitialized || !googleAuthToken) {
+        document.getElementById('registration-requests-list').innerHTML = '<p style="color: red;">❌ Google not connected. Please connect to Google first.</p>';
+        return;
+    }
+
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: 'Registrations!A:G'
+        });
+
+        const rows = response.result.values || [];
+        if (rows.length <= 1) {
+            document.getElementById('registration-requests-list').innerHTML = '<p style="text-align: center; color: #999;">No pending registration requests</p>';
+            return;
+        }
+
+        let html = '';
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row[0]) continue;
+
+            const fullName = row[0];
+            const role = row[1];
+            const gmail = row[2];
+            const className = row[3] || 'N/A';
+            const status = row[5];
+            const rowIndex = i;
+
+            if (status === 'pending') {
+                html += `
+                    <div style="background: white; padding: 12px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid #f39c12;">
+                        <p style="margin: 5px 0;"><strong>Name:</strong> ${fullName}</p>
+                        <p style="margin: 5px 0;"><strong>Role:</strong> ${role}</p>
+                        <p style="margin: 5px 0;"><strong>Gmail:</strong> ${gmail}</p>
+                        <p style="margin: 5px 0;"><strong>Class:</strong> ${className}</p>
+                        <p style="margin: 5px 0;"><strong>Status:</strong> <span style="color: #f39c12; font-weight: bold;">PENDING</span></p>
+                        <div style="display: flex; gap: 10px; margin-top: 10px;">
+                            <button onclick="(async () => await approveRegistration(${rowIndex}))()">✅ Approve</button>
+                            <button onclick="(async () => await rejectRegistration(${rowIndex}))()">❌ Reject</button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        if (html === '') {
+            document.getElementById('registration-requests-list').innerHTML = '<p style="text-align: center; color: #999;">No pending registration requests</p>';
+            return;
+        }
+
+        document.getElementById('registration-requests-list').innerHTML = html;
+    } catch (error) {
+        console.error('Failed to load registration requests:', error);
+        document.getElementById('registration-requests-list').innerHTML = `<p style="color: red;">❌ Error loading requests: ${error.message}</p>`;
+    }
+}
+
+async function approveRegistration(rowIndex) {
+    if (!googleInitialized || !googleAuthToken) {
+        alert('❌ Google not connected');
+        return;
+    }
+
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `Registrations!A${rowIndex + 1}:G${rowIndex + 1}`
+        });
+
+        const row = response.result.values?.[0];
+        if (!row) {
+            alert('❌ Could not find registration');
+            return;
+        }
+
+        const fullName = row[0];
+        const role = row[1];
+        const gmail = row[2];
+        const className = row[3];
+        const password = row[4];
+
+        await gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `Registrations!F${rowIndex + 1}`,
+            valueInputOption: 'RAW',
+            resource: { values: [['approved']] }
+        });
+
+        await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: 'ApprovedUsers!A:F',
+            valueInputOption: 'RAW',
+            resource: {
+                values: [[fullName, role, gmail, password, className || '', new Date().toLocaleString()]]
+            }
+        });
+
+        alert('✅ Registration approved!');
+        await loadRegistrationRequests();
+    } catch (error) {
+        console.error('Failed to approve registration:', error);
+        alert('❌ Error approving registration: ' + error.message);
+    }
+}
+
+async function rejectRegistration(rowIndex) {
+    if (!googleInitialized || !googleAuthToken) {
+        alert('❌ Google not connected');
+        return;
+    }
+
+    try {
+        await gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `Registrations!F${rowIndex + 1}`,
+            valueInputOption: 'RAW',
+            resource: { values: [['rejected']] }
+        });
+
+        alert('✅ Registration rejected');
+        await loadRegistrationRequests();
+    } catch (error) {
+        console.error('Failed to reject registration:', error);
+        alert('❌ Error rejecting registration: ' + error.message);
+    }
+}
+
+async function saveRegistrationToGoogleSheets(registrationData) {
+    if (!googleInitialized || !googleAuthToken) {
+        alert('⚠️ Google not connected. Registration will NOT be saved. Please connect Google first.');
+        return false;
+    }
+
+    try {
+        await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: 'Registrations!A:G',
+            valueInputOption: 'RAW',
+            resource: {
+                values: [[
+                    registrationData.fullName,
+                    registrationData.role,
+                    registrationData.gmail,
+                    registrationData.class,
+                    registrationData.password,
+                    registrationData.status,
+                    registrationData.timestamp
+                ]]
+            }
+        });
+
+        console.log('Registration saved to Google Sheets');
+        return true;
+    } catch (error) {
+        console.error('Failed to save registration:', error);
+        return false;
+    }
+}
+
+async function fetchApprovedUserFromSheets(gmail, role) {
+    if (!googleInitialized || !googleAuthToken) {
+        console.log('Google API not ready for user verification');
+        return null;
+    }
+
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: 'ApprovedUsers!A:F'
+        });
+
+        const rows = response.result.values || [];
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row[2] === gmail && row[1] === role) {
+                return {
+                    fullName: row[0],
+                    role: row[1],
+                    gmail: row[2],
+                    password: row[3],
+                    class: row[4] || ''
+                };
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('Failed to fetch approved user:', error);
+        return null;
+    }
+}
+
+
 function backToLoginSelection() {
     adminLoginSection.style.display = 'none';
     userLoginSection.style.display = 'none';
+    registrationSection.style.display = 'none';
     loginSection.style.display = 'block';
     document.getElementById('admin-username').value = '';
     document.getElementById('admin-password').value = '';
@@ -92,14 +363,24 @@ function backToLoginSelection() {
     document.getElementById('user-class-select').value = '';
 }
 
-function adminLogin() {
+async function adminLogin() {
     const username = document.getElementById('admin-username').value.trim().toLowerCase();
     const password = document.getElementById('admin-password').value.trim().toLowerCase();
     if (username === ADMIN_USER.toLowerCase() && password === ADMIN_PASS.toLowerCase()) {
         adminLoginSection.style.display = 'none';
         adminSection.style.display = 'block';
         isAdminMode = true;
-        loadPasswords();
+        await loadPasswords();
+        
+        // Ensure admin tabs are properly initialized
+        showAdminTab('passwords');
+        
+        if (googleInitialized && googleAuthToken) {
+            await loadRegistrationRequests();
+        } else {
+            document.getElementById('registration-requests-list').innerHTML = '<p style="color: #f39c12;">Please connect to Google to manage registration requests</p>';
+        }
+        
         document.getElementById('admin-username').value = '';
         document.getElementById('admin-password').value = '';
     } else {
@@ -107,7 +388,7 @@ function adminLogin() {
     }
 }
 
-function userLogin() {
+async function userLogin() {
     const selectedClass = document.getElementById('user-class-select').value;
     const enteredPwd = document.getElementById('user-password').value;
     
@@ -115,13 +396,26 @@ function userLogin() {
         alert('❌ Please select a class.');
         return;
     }
-    
-    const storedPwd = localStorage.getItem(`${selectedClass}-pwd`);
+
+    let storedPwd = localStorage.getItem(`${selectedClass}-pwd`);
+    let userRole = null;
+    let userEmail = null;
+
+    if (googleAuthToken && googleInitialized) {
+        const remotePasswords = await fetchClassPasswordsFromGoogleSheets();
+        if (remotePasswords) {
+            classPasswords = remotePasswords;
+            storedPwd = remotePasswords[selectedClass] || storedPwd;
+        }
+    }
+
     if (enteredPwd === storedPwd) {
         currentClass = selectedClass;
+        userRole = 'class-user';
         userLoginSection.style.display = 'none';
         classSection.style.display = 'block';
         classTitle.textContent = selectedClass.charAt(0).toUpperCase() + selectedClass.slice(1);
+        setupRoleBasedAccess(userRole, selectedClass);
         loadClassData();
         document.getElementById('user-password').value = '';
     } else {
@@ -129,27 +423,63 @@ function userLogin() {
     }
 }
 
-function loadPasswords() {
-    const classes = ['beginners', 'primary', 'junior', 'intermediate', 'senior', 'teachers', 'volunteers'];
-    classes.forEach(cls => {
-        const pwd = localStorage.getItem(`${cls}-pwd`) || '';
-        document.getElementById(`${cls}-pwd`).value = pwd;
+
+async function loadPasswords() {
+    let passwordMap = {};
+
+    if (googleAuthToken && googleInitialized) {
+        const remotePasswords = await fetchClassPasswordsFromGoogleSheets();
+        if (remotePasswords) {
+            passwordMap = remotePasswords;
+            Object.keys(remotePasswords).forEach(cls => {
+                localStorage.setItem(`${cls}-pwd`, remotePasswords[cls]);
+            });
+        }
+    }
+
+    if (Object.keys(passwordMap).length === 0) {
+        CLASS_LIST.forEach(cls => {
+            const pwd = localStorage.getItem(`${cls}-pwd`) || '';
+            if (pwd) passwordMap[cls] = pwd;
+        });
+    }
+
+    classPasswords = passwordMap;
+    CLASS_LIST.forEach(cls => {
+        document.getElementById(`${cls}-pwd`).value = passwordMap[cls] || '';
     });
 }
 
-function savePasswords() {
-    const classes = ['beginners', 'primary', 'junior', 'intermediate', 'senior', 'teachers', 'volunteers'];
-    classes.forEach(cls => {
+async function savePasswords() {
+    const passwordMap = {};
+    CLASS_LIST.forEach(cls => {
         const pwd = document.getElementById(`${cls}-pwd`).value;
         localStorage.setItem(`${cls}-pwd`, pwd);
+        if (pwd) passwordMap[cls] = pwd;
     });
-    alert('✅ Passwords saved successfully!');
+
+    classPasswords = passwordMap;
+
+    if (googleAuthToken && googleInitialized) {
+        const saved = await saveClassPasswordsToGoogleSheets(passwordMap);
+        if (saved) {
+            alert('✅ Passwords saved locally and synced to Google Sheets!');
+            return;
+        }
+    }
+
+    alert('✅ Passwords saved locally. Connect to Google to sync them centrally.');
 }
 
 function accessClass() {
     const selectedClass = document.getElementById('class-select').value;
     const enteredPwd = document.getElementById('class-pwd').value;
-    const storedPwd = localStorage.getItem(`${selectedClass}-pwd`);
+    let storedPwd = localStorage.getItem(`${selectedClass}-pwd`);
+
+    if (googleAuthToken && googleInitialized && classPasswords[selectedClass]) {
+        storedPwd = classPasswords[selectedClass];
+    }
+
     if (enteredPwd === storedPwd) {
         currentClass = selectedClass;
         adminSection.style.display = 'none';
@@ -159,6 +489,66 @@ function accessClass() {
         document.getElementById('class-pwd').value = '';
     } else {
         alert('❌ Invalid class password. Please try again.');
+    }
+}
+
+async function fetchClassPasswordsFromGoogleSheets() {
+    if (!googleInitialized || !googleAuthToken) {
+        console.log('Google API not ready for password sync');
+        return null;
+    }
+
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: 'Passwords!A:B'
+        });
+
+        const rows = response.result.values || [];
+        const passwordMap = {};
+        rows.forEach((row, index) => {
+            if (index === 0) return; // skip header row
+            const cls = row[0]?.toString().trim().toLowerCase();
+            const pwd = row[1]?.toString();
+            if (CLASS_LIST.includes(cls) && pwd) {
+                passwordMap[cls] = pwd;
+            }
+        });
+
+        if (Object.keys(passwordMap).length === 0) {
+            console.log('No password rows found in Google Sheets. Ensure Passwords sheet exists with headers.');
+        }
+        return passwordMap;
+    } catch (error) {
+        console.error('Failed to fetch class passwords from Google Sheets:', error);
+        return null;
+    }
+}
+
+async function saveClassPasswordsToGoogleSheets(passwordMap) {
+    if (!googleInitialized || !googleAuthToken) {
+        console.log('Google API not ready for password sync');
+        return false;
+    }
+
+    try {
+        const values = [
+            ['Class', 'Password'],
+            ...CLASS_LIST.map(cls => [cls, passwordMap[cls] || ''])
+        ];
+
+        await gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: 'Passwords!A:B',
+            valueInputOption: 'RAW',
+            resource: { values }
+        });
+
+        console.log('Class passwords synced to Google Sheets successfully');
+        return true;
+    } catch (error) {
+        console.error('Failed to save class passwords to Google Sheets:', error);
+        return false;
     }
 }
 
@@ -555,6 +945,28 @@ async function downloadAttendanceCSV() {
 function backToClass() {
     attendanceReportSection.style.display = 'none';
     classSection.style.display = 'block';
+}
+
+function setupRoleBasedAccess(userRole, userClass) {
+    const markAttendanceBtn = classSection.querySelector('button[onclick*="markAttendance"]');
+    const addStudentBtn = classSection.querySelector('button[onclick*="addStudentFromInput"]');
+    const saveNotesBtn = classSection.querySelector('button[onclick*="saveNotes"]');
+    
+    switch(userRole) {
+        case 'teacher':
+        case 'volunteer':
+        case 'director':
+        case 'class-user':
+            if (markAttendanceBtn) markAttendanceBtn.style.display = 'block';
+            if (addStudentBtn) addStudentBtn.style.display = 'block';
+            if (saveNotesBtn) saveNotesBtn.style.display = 'block';
+            break;
+        case 'student':
+            if (markAttendanceBtn) markAttendanceBtn.style.display = 'none';
+            if (addStudentBtn) addStudentBtn.style.display = 'none';
+            if (saveNotesBtn) saveNotesBtn.style.display = 'none';
+            break;
+    }
 }
 
 // For Google API integration, add this script tag in HTML: <script src="https://apis.google.com/js/api.js"></script>

@@ -21,6 +21,65 @@
         <p style="text-align: center; color: #666; margin-bottom: 30px;">Select your login type</p>
         <button onclick="showAdminLogin()" style="width: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">👨‍💼 Admin Login</button>
         <button onclick="showUserLogin()" style="width: 100%; background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);">👥 User Login</button>
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+        <button onclick="showRegistration()" style="width: 100%; background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">✏️ Register New User</button>
+    </div>
+
+    <div id="registration-section" style="display:none;">
+        <h1>✏️ Register New User</h1>
+        <form onsubmit="submitRegistration(event)">
+            <label for="reg-full-name">Full Name:</label>
+            <input type="text" id="reg-full-name" placeholder="Enter your full name" required>
+            
+            <label for="reg-role">Role:</label>
+            <select id="reg-role" onchange="updateRoleFields()" required>
+                <option value="">-- Select Role --</option>
+                <option value="teacher">Teacher</option>
+                <option value="volunteer">Volunteer</option>
+                <option value="student">Student</option>
+                <option value="director">Director</option>
+            </select>
+
+            <div id="class-field" style="display: none;">
+                <label for="reg-class">Class:</label>
+                <select id="reg-class">
+                    <option value="">-- Select Class (Optional) --</option>
+                    <option value="beginners">Beginners</option>
+                    <option value="primary">Primary</option>
+                    <option value="junior">Junior</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="senior">Senior</option>
+                    <option value="teachers">Teachers</option>
+                    <option value="volunteers">Volunteers</option>
+                </select>
+            </div>
+
+            <div id="class-required-field" style="display: none;">
+                <label for="reg-class-required">Class (Required):</label>
+                <select id="reg-class-required" required>
+                    <option value="">-- Select Class --</option>
+                    <option value="beginners">Beginners</option>
+                    <option value="primary">Primary</option>
+                    <option value="junior">Junior</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="senior">Senior</option>
+                    <option value="teachers">Teachers</option>
+                    <option value="volunteers">Volunteers</option>
+                </select>
+            </div>
+
+            <label for="reg-gmail">Gmail ID:</label>
+            <input type="email" id="reg-gmail" placeholder="Enter your Gmail address" required>
+            
+            <label for="reg-password">Password:</label>
+            <input type="password" id="reg-password" placeholder="Create a password" required>
+            
+            <label for="reg-confirm-password">Confirm Password:</label>
+            <input type="password" id="reg-confirm-password" placeholder="Confirm your password" required>
+
+            <button type="submit" style="background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">📝 Submit Registration</button>
+            <button type="button" onclick="backToLoginSelection()" style="background: #999;">← Back</button>
+        </form>
     </div>
 
     <div id="admin-login-section" style="display:none;">
@@ -54,39 +113,60 @@
 
     <div id="admin-section" style="display:none;">
         <h1>⚙️ Admin Panel</h1>
-        <h2>🔑 Set Class Passwords</h2>
-        <div id="passwords">
-            <label for="beginners-pwd">Beginners:</label>
-            <input type="password" id="beginners-pwd" placeholder="Set password">
-            <label for="primary-pwd">Primary:</label>
-            <input type="password" id="primary-pwd" placeholder="Set password">
-            <label for="junior-pwd">Junior:</label>
-            <input type="password" id="junior-pwd" placeholder="Set password">
-            <label for="intermediate-pwd">Intermediate:</label>
-            <input type="password" id="intermediate-pwd" placeholder="Set password">
-            <label for="senior-pwd">Senior:</label>
-            <input type="password" id="senior-pwd" placeholder="Set password">
-            <label for="teachers-pwd">Teachers:</label>
-            <input type="password" id="teachers-pwd" placeholder="Set password">
-            <label for="volunteers-pwd">Volunteers:</label>
-            <input type="password" id="volunteers-pwd" placeholder="Set password">
+        
+        <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+            <button id="admin-tab-passwords" onclick="showAdminTab('passwords')" style="flex: 1; background: #667eea;">🔑 Passwords</button>
+            <button id="admin-tab-requests" onclick="showAdminTab('requests')" style="flex: 1; background: #764ba2;">📋 Registration Requests</button>
+            <button id="admin-tab-class" onclick="showAdminTab('class')" style="flex: 1; background: #667eea;">📚 Class Access</button>
         </div>
-        <button onclick="savePasswords()">💾 Save Passwords</button>
-        <h2>📚 Select Class</h2>
-        <label for="class-select">Choose a class:</label>
-        <select id="class-select">
-            <option value="beginners">Beginners</option>
-            <option value="primary">Primary</option>
-            <option value="junior">Junior</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="senior">Senior</option>
-            <option value="teachers">Teachers</option>
-            <option value="volunteers">Volunteers</option>
-        </select>
-        <label for="class-pwd">Enter Class Password:</label>
-        <input type="password" id="class-pwd" placeholder="Enter password">
-        <button onclick="accessClass()">✓ Access Class</button>
-        <button onclick="logoutAdmin()" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">🚪 Logout</button>
+
+        <div id="admin-passwords-section">
+            <h2>🔑 Set Class Passwords</h2>
+            <div id="passwords">
+                <label for="beginners-pwd">Beginners:</label>
+                <input type="password" id="beginners-pwd" placeholder="Set password">
+                <label for="primary-pwd">Primary:</label>
+                <input type="password" id="primary-pwd" placeholder="Set password">
+                <label for="junior-pwd">Junior:</label>
+                <input type="password" id="junior-pwd" placeholder="Set password">
+                <label for="intermediate-pwd">Intermediate:</label>
+                <input type="password" id="intermediate-pwd" placeholder="Set password">
+                <label for="senior-pwd">Senior:</label>
+                <input type="password" id="senior-pwd" placeholder="Set password">
+                <label for="teachers-pwd">Teachers:</label>
+                <input type="password" id="teachers-pwd" placeholder="Set password">
+                <label for="volunteers-pwd">Volunteers:</label>
+                <input type="password" id="volunteers-pwd" placeholder="Set password">
+            </div>
+            <button onclick="savePasswords()">💾 Save Passwords</button>
+        </div>
+
+        <div id="admin-requests-section" style="display: none;">
+            <h2>📋 Registration Requests</h2>
+            <div id="registration-requests-list" style="background: #f8f9ff; padding: 15px; border-radius: 8px; max-height: 500px; overflow-y: auto;">
+                <p style="text-align: center; color: #999;">Loading registration requests...</p>
+            </div>
+            <button onclick="(async () => await loadRegistrationRequests())()">🔄 Refresh Requests</button>
+        </div>
+
+        <div id="admin-class-section" style="display: none;">
+            <h2>📚 Select Class</h2>
+            <label for="class-select">Choose a class:</label>
+            <select id="class-select">
+                <option value="beginners">Beginners</option>
+                <option value="primary">Primary</option>
+                <option value="junior">Junior</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="senior">Senior</option>
+                <option value="teachers">Teachers</option>
+                <option value="volunteers">Volunteers</option>
+            </select>
+            <label for="class-pwd">Enter Class Password:</label>
+            <input type="password" id="class-pwd" placeholder="Enter password">
+            <button onclick="accessClass()">✓ Access Class</button>
+        </div>
+
+        <button onclick="logoutAdmin()" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); width: 100%; margin-top: 20px;">🚪 Logout</button>
     </div>
 
     <div id="class-section" style="display:none;">
