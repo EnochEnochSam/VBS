@@ -1139,6 +1139,7 @@ async function saveAttendanceToGoogleSheets(classData) {
     try {
         const today = new Date().toLocaleDateString();
         const sheetName = currentClass.charAt(0).toUpperCase() + currentClass.slice(1);
+        await ensureAttendanceSheetHeader(sheetName);
         
         // Prepare the data
         const values = [
@@ -1169,6 +1170,34 @@ async function saveAttendanceToGoogleSheets(classData) {
     }
 }
 
+async function ensureAttendanceSheetHeader(sheetName) {
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `${sheetName}!A1:D1`
+        });
+
+        const header = response.result.values && response.result.values[0] ? response.result.values[0] : [];
+        const normalizedHeader = header.map(cell => (cell || '').toString().trim().toLowerCase());
+        const expectedHeader = ['date', 'student name', 'status', 'timestamp'];
+        const hasExpectedHeader = expectedHeader.every((value, index) => normalizedHeader[index] === value);
+
+        if (!hasExpectedHeader) {
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                range: `${sheetName}!A1:D1`,
+                valueInputOption: 'RAW',
+                resource: {
+                    values: [['Date', 'Student Name', 'Status', 'Timestamp']]
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Failed to ensure attendance sheet header:', error);
+        throw error;
+    }
+}
+
 async function fetchAttendanceFromGoogleSheets() {
     if (!googleInitialized || !googleAuthToken) {
         console.log('Google API not ready - using local data only');
@@ -1177,6 +1206,7 @@ async function fetchAttendanceFromGoogleSheets() {
 
     try {
         const sheetName = currentClass.charAt(0).toUpperCase() + currentClass.slice(1);
+        await ensureAttendanceSheetHeader(sheetName);
         
         // Read all data from the sheet
         const response = await gapi.client.sheets.spreadsheets.values.get({
@@ -1194,8 +1224,12 @@ async function fetchAttendanceFromGoogleSheets() {
         const attendanceRecords = [];
         const recordsByDate = {};
 
-        // Skip header row and process data
-        for (let i = 1; i < values.length; i++) {
+        // Skip header row when present and process data
+        const firstRow = values[0] || [];
+        const firstRowNormalized = firstRow.map(cell => (cell || '').toString().trim().toLowerCase());
+        const startIndex = firstRowNormalized[0] === 'date' && firstRowNormalized[1] === 'student name' ? 1 : 0;
+
+        for (let i = startIndex; i < values.length; i++) {
             const row = values[i];
             if (row.length >= 3) {
                 const date = row[0];
