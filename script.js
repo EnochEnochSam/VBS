@@ -525,6 +525,18 @@ async function userLogin() {
         if (user && user.password === password) {
             currentUser = user;
             currentRole = user.role;
+
+            if (currentRole === 'director') {
+                userLoginSection.style.display = 'none';
+                adminSection.style.display = 'block';
+                isAdminMode = true;
+                showAdminTab('requests');
+                await loadRegistrationRequests();
+                document.getElementById('user-gmail').value = '';
+                document.getElementById('user-password').value = '';
+                return;
+            }
+
             let chosenClass = user.class || '';
             if (!chosenClass) {
                 chosenClass = currentRole === 'teacher' ? 'teachers' : CLASS_LIST[0];
@@ -807,6 +819,9 @@ function logoutAdmin() {
     adminSection.style.display = 'none';
     loginSection.style.display = 'block';
     isAdminMode = false;
+    currentClass = '';
+    currentRole = '';
+    currentUser = null;
     document.getElementById('class-select').value = 'beginners';
 }
 
