@@ -39,12 +39,23 @@
             <input type="text" id="reg-full-name" placeholder="Enter your full name" required>
 
             <label for="reg-role">Role:</label>
-            <select id="reg-role" required>
+            <select id="reg-role" onchange="updateClassRequirement()" required>
                 <option value="">-- Select Role --</option>
                 <option value="student">Student</option>
                 <option value="teacher">Teacher</option>
-                <option value="volunteer">Volunteer</option>
+                <option value="teacher_view">Teacher (View Only)</option>
                 <option value="director">Director</option>
+            </select>
+
+            <label for="reg-class" id="reg-class-label">Class (required for students & teachers):</label>
+            <select id="reg-class" required>
+                <option value="">-- Select Class --</option>
+                <option value="beginners">Beginners</option>
+                <option value="primary">Primary</option>
+                <option value="junior">Junior</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="senior">Senior</option>
+                <option value="teachers">Teachers</option>
             </select>
 
             <label for="reg-gmail">Gmail ID:</label>
@@ -72,16 +83,8 @@
     </div>
 
     <div id="user-login-section" style="display:none;">
-        <h1>� User Login</h1>
-        <label for="user-role">Select your role:</label>
-        <select id="user-role" required>
-            <option value="">-- Select Role --</option>
-            <option value="admin">Admin</option>
-            <option value="student">Student</option>
-            <option value="teacher">Teacher</option>
-            <option value="volunteer">Volunteer</option>
-            <option value="director">Director</option>
-        </select>
+        <h1>👤 User Login</h1>
+        <p style="margin-bottom: 15px; color: #555;">Login with your Gmail and password. Class access is granted based on your approved account.</p>
 
         <label for="user-gmail">Gmail ID:</label>
         <input type="email" id="user-gmail" placeholder="Enter your Gmail address" required>
@@ -107,9 +110,9 @@
                 <p>Active teachers</p>
             </div>
             <div class="dashboard-card">
-                <h3>🤝 Volunteers</h3>
-                <div class="dashboard-value" id="total-volunteers-count">0</div>
-                <p>Active volunteers</p>
+                <h3>🎬 Directors</h3>
+                <div class="dashboard-value" id="total-directors-count">0</div>
+                <p>Active directors</p>
             </div>
             <div class="dashboard-card">
                 <h3>📅 Today's Attendance</h3>
@@ -124,30 +127,8 @@
         <h1>⚙️ Admin Panel</h1>
         
         <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-            <button id="admin-tab-passwords" onclick="showAdminTab('passwords')" style="flex: 1; background: #667eea;">🔑 Passwords</button>
             <button id="admin-tab-requests" onclick="showAdminTab('requests')" style="flex: 1; background: #764ba2;">📋 Registration Requests</button>
             <button id="admin-tab-class" onclick="showAdminTab('class')" style="flex: 1; background: #667eea;">📚 Class Access</button>
-        </div>
-
-        <div id="admin-passwords-section">
-            <h2>🔑 Set Class Passwords</h2>
-            <div id="passwords">
-                <label for="beginners-pwd">Beginners:</label>
-                <input type="password" id="beginners-pwd" placeholder="Set password">
-                <label for="primary-pwd">Primary:</label>
-                <input type="password" id="primary-pwd" placeholder="Set password">
-                <label for="junior-pwd">Junior:</label>
-                <input type="password" id="junior-pwd" placeholder="Set password">
-                <label for="intermediate-pwd">Intermediate:</label>
-                <input type="password" id="intermediate-pwd" placeholder="Set password">
-                <label for="senior-pwd">Senior:</label>
-                <input type="password" id="senior-pwd" placeholder="Set password">
-                <label for="teachers-pwd">Teachers:</label>
-                <input type="password" id="teachers-pwd" placeholder="Set password">
-                <label for="volunteers-pwd">Volunteers:</label>
-                <input type="password" id="volunteers-pwd" placeholder="Set password">
-            </div>
-            <button onclick="savePasswords()">💾 Save Passwords</button>
         </div>
 
         <div id="admin-requests-section" style="display: none;">
@@ -159,7 +140,8 @@
         </div>
 
         <div id="admin-class-section" style="display: none;">
-            <h2>📚 Select Class</h2>
+            <h2>📚 Class Access</h2>
+            <p style="margin-bottom: 12px; color: #555;">Select a class to view or manage its attendance.</p>
             <label for="class-select">Choose a class:</label>
             <select id="class-select">
                 <option value="beginners">Beginners</option>
@@ -168,10 +150,7 @@
                 <option value="intermediate">Intermediate</option>
                 <option value="senior">Senior</option>
                 <option value="teachers">Teachers</option>
-                <option value="volunteers">Volunteers</option>
             </select>
-            <label for="class-pwd">Enter Class Password:</label>
-            <input type="password" id="class-pwd" placeholder="Enter password">
             <button onclick="accessClass()">✓ Access Class</button>
         </div>
 
@@ -180,6 +159,17 @@
 
     <div id="class-section" style="display:none;">
         <h1>📚 <span id="class-title"></span></h1>
+        <div id="class-switcher" style="display:none; margin-bottom: 15px;">
+            <label for="class-view-select" style="display: block; margin-bottom: 8px; font-weight: 600;">Select class to view:</label>
+            <select id="class-view-select" onchange="switchClassView()" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
+                <option value="beginners">Beginners</option>
+                <option value="primary">Primary</option>
+                <option value="junior">Junior</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="senior">Senior</option>
+                <option value="teachers">Teachers</option>
+            </select>
+        </div>
         <div style="background-color: #e8f5e9; padding: 12px; border-radius: 6px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between;">
             <span id="google-status" style="color: #2e7d32; font-weight: 600;">📱 Not connected to Google</span>
             <button onclick="handleAuthClick()" id="google-auth-btn" style="padding: 8px 16px; font-size: 0.9em;">🔗 Connect Google</button>
@@ -187,6 +177,17 @@
         <h2>✓ Attendance</h2>
         <div style="background-color: #f8f9ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #667eea;">
             <label for="student-name-input" style="display: block; margin-bottom: 10px; font-weight: 600;">Add New Student:</label>
+            <div id="add-student-class-selector" style="display: none; margin-bottom: 10px;">
+                <label for="add-student-class-select" style="font-weight: 600;">Select class to add student to:</label>
+                <select id="add-student-class-select" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; margin-top: 5px;">
+                    <option value="beginners">Beginners</option>
+                    <option value="primary">Primary</option>
+                    <option value="junior">Junior</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="senior">Senior</option>
+                    <option value="teachers">Teachers</option>
+                </select>
+            </div>
             <div style="display: flex; gap: 10px;">
                 <input type="text" id="student-name-input" placeholder="Enter student name..." style="flex: 1; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1em;">
                 <button onclick="addStudentFromInput()" style="padding: 12px 24px; white-space: nowrap;">➕ Add Student</button>
