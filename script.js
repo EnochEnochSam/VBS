@@ -5,6 +5,144 @@ const ADMIN_PASS = 'VBSGoodShepherdChurch';
 // Date range for attendance and notes (May 6 - May 16, 2026)
 const START_DATE = new Date(2026, 4, 6); // May 6, 2026
 const END_DATE = new Date(2026, 4, 16); // May 16, 2026
+let classDataLoadToken = 0;
+const GROUP_OPTIONS = ['Girls 1', 'Girls 2', 'Girls 3', 'Girls 4', 'Boys 1', 'Boys 2', 'Boys 3', 'Boys 4'];
+
+function getStudentRewardsStorageKey(className = currentClass) {
+    return `${className}-student-rewards`;
+}
+
+function getStudentRewardsCache(className = currentClass) {
+    return JSON.parse(localStorage.getItem(getStudentRewardsStorageKey(className)) || '[]');
+}
+
+function saveStudentRewardsCache(className, students) {
+    localStorage.setItem(getStudentRewardsStorageKey(className), JSON.stringify(students));
+}
+
+function normalizePointsValue(value) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildStudentRewardKey(student) {
+    return (student.gmail || student.fullName || '').toString().trim().toLowerCase();
+}
+
+async function fetchApprovedUsersFromSheets() {
+    if (!googleInitialized || !googleAuthToken) {
+        console.log('Google API not ready for approved users lookup');
+        return null;
+    }
+
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: 'ApprovedUsers!A:H'
+        });
+
+        const rows = response.result.values || [];
+        if (rows.length <= 1) {
+            return [];
+        }
+
+        return rows.slice(1).map(row => ({
+            fullName: row[0]?.toString().trim() || '',
+            role: row[1]?.toString().trim().toLowerCase() || '',
+            gmail: row[2]?.toString().trim().toLowerCase() || '',
+            password: row[3]?.toString() || '',
+            class: row[4]?.toString().trim().toLowerCase() || '',
+            approvedDate: row[5]?.toString() || '',
+            group: row[6]?.toString().trim() || '',
+            points: normalizePointsValue(row[7])
+        }));
+    } catch (error) {
+        console.error('Failed to load approved users:', error);
+        return null;
+    }
+}
+
+function mergeStudentRewards(remoteStudents, cachedStudents) {
+    const cacheMap = new Map((cachedStudents || []).map(student => [buildStudentRewardKey(student), student]));
+    const merged = (remoteStudents || []).map(student => {
+        const cache = cacheMap.get(buildStudentRewardKey(student)) || {};
+        return {
+            ...student,
+            group: student.group || cache.group || '',
+            points: normalizePointsValue(student.points ?? cache.points ?? 0)
+        };
+    });
+
+    const mergedKeys = new Set(merged.map(student => buildStudentRewardKey(student)));
+    (cachedStudents || []).forEach(student => {
+        const key = buildStudentRewardKey(student);
+        if (!mergedKeys.has(key)) {
+            merged.push({
+                ...student,
+                group: student.group || '',
+                points: normalizePointsValue(student.points)
+            });
+        }
+    });
+
+    return merged;
+}
+
+async function getClassStudentRewards(className = currentClass) {
+    const cachedStudents = getStudentRewardsCache(className);
+    const approvedUsers = await fetchApprovedUsersFromSheets();
+
+    if (!approvedUsers) {
+        return cachedStudents;
+    }
+
+    const classStudents = approvedUsers.filter(user => user.role === 'student' && user.class === className);
+    const mergedStudents = mergeStudentRewards(classStudents, cachedStudents);
+    saveStudentRewardsCache(className, mergedStudents);
+    return mergedStudents;
+}
+
+async function updateApprovedUserRewards(gmail, updates) {
+    if (!googleInitialized || !googleAuthToken) {
+        return false;
+    }
+
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: 'ApprovedUsers!A:H'
+        });
+
+        const rows = response.result.values || [];
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row[2] && row[2].toString().trim().toLowerCase() === gmail.toLowerCase()) {
+                const group = updates.group !== undefined ? updates.group : (row[6] || '');
+                const points = updates.points !== undefined ? normalizePointsValue(updates.points) : normalizePointsValue(row[7]);
+
+                await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                    range: `ApprovedUsers!G${i + 1}:H${i + 1}`,
+                    valueInputOption: 'RAW',
+                    resource: {
+                        values: [[group, points]]
+                    }
+                });
+                return true;
+            }
+        }
+        return false;
+    } catch (error) {
+        console.error('Failed to update approved user rewards:', error);
+        return false;
+    }
+}
+
+function refreshDashboardIfVisible() {
+    if (dashboardSection && dashboardSection.style.display === 'block') {
+        loadDashboardData();
+    }
+}
 
 function getAttendanceDateConfigs() {
     const dates = [];
@@ -321,6 +459,128 @@ function getAttendanceGridFromUI() {
     });
 }
 
+function renderStudentRewardsTable(students, options = {}) {
+    if (!studentRewardsList) {
+        return;
+    }
+
+    const canAssignGroup = !!options.canAssignGroup;
+    const canAddPoints = !!options.canAddPoints;
+    studentRewardsList.innerHTML = '';
+
+    if (!students || students.length === 0) {
+        studentRewardsList.innerHTML = '<p style="text-align: center; color: #999; padding: 12px;">No students found for this class.</p>';
+        return;
+    }
+
+    const table = document.createElement('table');
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+    table.style.backgroundColor = 'white';
+
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    headerRow.innerHTML = `
+        <th style="background: #667eea; color: white; padding: 10px; text-align: left;">Student</th>
+        <th style="background: #667eea; color: white; padding: 10px; text-align: left;">Group</th>
+        <th style="background: #667eea; color: white; padding: 10px; text-align: left;">Points</th>
+    `;
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    students.forEach((student, index) => {
+        const row = document.createElement('tr');
+
+        const nameCell = document.createElement('td');
+        nameCell.textContent = student.fullName;
+        nameCell.style.cssText = 'padding: 10px; border-top: 1px solid #eee; font-weight: 600;';
+        row.appendChild(nameCell);
+
+        const groupCell = document.createElement('td');
+        groupCell.style.cssText = 'padding: 10px; border-top: 1px solid #eee;';
+        if (canAssignGroup) {
+            const select = document.createElement('select');
+            select.style.cssText = 'width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;';
+            select.innerHTML = ['<option value="">-- No Group --</option>', ...GROUP_OPTIONS.map(group => `<option value="${group}">${group}</option>`)].join('');
+            select.value = student.group || '';
+            select.onchange = async () => {
+                student.group = select.value;
+                saveStudentRewardsCache(currentClass, students);
+                if (!student.gmail || !googleInitialized || !googleAuthToken) {
+                    refreshDashboardIfVisible();
+                    return;
+                }
+                const saved = await updateApprovedUserRewards(student.gmail, { group: student.group, points: student.points });
+                if (saved) {
+                    refreshDashboardIfVisible();
+                } else {
+                    alert('❌ Could not save group. Please connect Google and try again.');
+                }
+            };
+            groupCell.appendChild(select);
+        } else {
+            groupCell.textContent = student.group || '-';
+        }
+        row.appendChild(groupCell);
+
+        const pointsCell = document.createElement('td');
+        pointsCell.style.cssText = 'padding: 10px; border-top: 1px solid #eee;';
+        const pointsWrap = document.createElement('div');
+        pointsWrap.style.cssText = 'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;';
+
+        const pointsValue = document.createElement('strong');
+        pointsValue.textContent = String(normalizePointsValue(student.points));
+        pointsValue.style.minWidth = '40px';
+        pointsWrap.appendChild(pointsValue);
+
+        if (canAddPoints) {
+            const pointsInput = document.createElement('input');
+            pointsInput.type = 'number';
+            pointsInput.value = '1';
+            pointsInput.style.cssText = 'width: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 6px;';
+
+            const addButton = document.createElement('button');
+            addButton.type = 'button';
+            addButton.textContent = '+ Add';
+            addButton.onclick = async () => {
+                const delta = normalizePointsValue(pointsInput.value);
+                if (delta === 0) {
+                    alert('❌ Enter a points value greater than 0.');
+                    return;
+                }
+                student.points = normalizePointsValue(student.points) + delta;
+                saveStudentRewardsCache(currentClass, students);
+                if (!student.gmail || !googleInitialized || !googleAuthToken) {
+                    pointsValue.textContent = String(student.points);
+                    refreshDashboardIfVisible();
+                    alert(`✅ ${student.fullName} awarded ${delta} points locally.`);
+                    return;
+                }
+                const saved = await updateApprovedUserRewards(student.gmail, { group: student.group, points: student.points });
+                if (saved) {
+                    pointsValue.textContent = String(student.points);
+                    refreshDashboardIfVisible();
+                    alert(`✅ ${student.fullName} awarded ${delta} points.`);
+                } else {
+                    alert('❌ Could not save points. Please connect Google and try again.');
+                }
+            };
+
+            pointsWrap.appendChild(pointsInput);
+            pointsWrap.appendChild(addButton);
+        }
+
+        pointsCell.appendChild(pointsWrap);
+        row.appendChild(pointsCell);
+
+        tbody.appendChild(row);
+    });
+
+    table.appendChild(tbody);
+    studentRewardsList.appendChild(table);
+}
+
 console.log('Script loaded successfully');
 
 function isWithinDateRange() {
@@ -345,7 +605,7 @@ function getDateRangeStatus() {
 }
 
 // DOM elements - will be initialized after DOM loads
-let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, notesTextarea, attendanceReportSection, registrationSection, dashboardSection;
+let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, studentRewardsSection, studentRewardsList, notesTextarea, attendanceReportSection, registrationSection, dashboardSection;
 let homeGoogleStatus, homeActionButtons, homeGoogleAuthBtn;
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -359,6 +619,8 @@ document.addEventListener('DOMContentLoaded', function() {
     classSection = document.getElementById('class-section');
     classTitle = document.getElementById('class-title');
     attendanceList = document.getElementById('attendance-list');
+    studentRewardsSection = document.getElementById('student-rewards-section');
+    studentRewardsList = document.getElementById('student-rewards-list');
     notesTextarea = document.getElementById('notes');
     attendanceReportSection = document.getElementById('attendance-report-section');
     
@@ -630,10 +892,10 @@ async function approveRegistration(rowIndex) {
 
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'ApprovedUsers!A:F',
+            range: 'ApprovedUsers!A:H',
             valueInputOption: 'RAW',
             resource: {
-                values: [[fullName, role, gmail, password, className || '', new Date().toLocaleString()]]
+                values: [[fullName, role, gmail, password, className || '', new Date().toLocaleString(), '', 0]]
             }
         });
 
@@ -759,31 +1021,14 @@ async function syncPendingRegistrationsToGoogleSheets() {
 }
 
 async function fetchApprovedUserFromSheets(gmail) {
-    if (!googleInitialized || !googleAuthToken) {
-        console.log('Google API not ready for user verification');
-        return null;
-    }
-
     try {
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'ApprovedUsers!A:F'
-        });
-
-        const rows = response.result.values || [];
-        for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            if (row[2] && row[2].toString().trim().toLowerCase() === gmail.toLowerCase()) {
-                return {
-                    fullName: row[0],
-                    role: row[1]?.toString().trim().toLowerCase(),
-                    gmail: row[2].toString().trim().toLowerCase(),
-                    password: row[3]?.toString(),
-                    class: row[4]?.toString().trim().toLowerCase() || ''
-                };
-            }
+        if (!googleInitialized || !googleAuthToken) {
+            console.log('Google API not ready for user verification');
+            return null;
         }
-        return null;
+
+        const approvedUsers = await fetchApprovedUsersFromSheets();
+        return (approvedUsers || []).find(user => user.gmail === gmail.toLowerCase()) || null;
     } catch (error) {
         console.error('Failed to fetch approved user:', error);
         return null;
@@ -889,17 +1134,26 @@ async function switchClassView() {
     currentClass = selectedClass;
     updateClassTitle();
     await loadClassData();
+    // Auto-open rewards panel for directors when switching class view
+    if (currentRole === 'director' && studentRewardsSection) {
+        studentRewardsSection.style.display = 'block';
+        try { studentRewardsSection.scrollIntoView({ behavior: 'smooth' }); } catch (e) {}
+    }
 }
 
 async function accessClass() {
     const selectedClass = document.getElementById('class-select').value;
     currentClass = selectedClass;
-    currentRole = 'admin';
     adminSection.style.display = 'none';
     classSection.style.display = 'block';
     updateClassTitle();
-    setupRoleBasedAccess('admin', selectedClass);
+    setupRoleBasedAccess(currentRole || 'admin', selectedClass);
     await loadClassData();
+    // Auto-open rewards panel for directors immediately after accessing a class
+    if (currentRole === 'director' && studentRewardsSection) {
+        studentRewardsSection.style.display = 'block';
+        try { studentRewardsSection.scrollIntoView({ behavior: 'smooth' }); } catch (e) {}
+    }
 }
 
 function updateGoogleStatus() {
@@ -952,6 +1206,8 @@ function updateGoogleStatus() {
 }
 
 async function loadClassData() {
+    const loadToken = ++classDataLoadToken;
+    const activeClass = currentClass;
     const withinRange = isWithinDateRange();
     const dateStatus = getDateRangeStatus();
     
@@ -983,22 +1239,37 @@ async function loadClassData() {
     }
     
     const editable = !['teacher_view', 'student'].includes(currentRole);
-    let attendanceGrid = getCurrentAttendanceGrid();
+    const canAssignGroup = currentRole === 'director' || currentRole === 'admin';
+    const canAddPoints = currentRole === 'director' || currentRole === 'admin' || currentRole === 'teacher';
+    let attendanceGrid = getCurrentAttendanceGrid(activeClass);
+    renderAttendanceGrid(attendanceGrid, editable);
+
+    const cachedRewards = getStudentRewardsCache(activeClass);
+    renderStudentRewardsTable(cachedRewards, { canAssignGroup, canAddPoints });
 
     if (googleInitialized && googleAuthToken) {
         try {
-            const remoteGrid = await fetchAttendanceFromGoogleSheets();
-            if (remoteGrid && remoteGrid.length > 0) {
-                attendanceGrid = mergeAttendanceGrid(remoteGrid, currentClass);
-                saveAttendanceGrid(currentClass, attendanceGrid);
-                saveStudentRoster(currentClass, attendanceGrid.map(row => row.name));
+            const remoteGrid = await fetchAttendanceFromGoogleSheets(activeClass);
+            if (loadToken !== classDataLoadToken || activeClass !== currentClass) {
+                return;
             }
+
+            if (remoteGrid && remoteGrid.length > 0) {
+                attendanceGrid = mergeAttendanceGrid(remoteGrid, activeClass);
+                saveAttendanceGrid(activeClass, attendanceGrid);
+                saveStudentRoster(activeClass, attendanceGrid.map(row => row.name));
+                renderAttendanceGrid(attendanceGrid, editable);
+            }
+
+            const remoteRewards = await getClassStudentRewards(activeClass);
+            if (loadToken !== classDataLoadToken || activeClass !== currentClass) {
+                return;
+            }
+            renderStudentRewardsTable(remoteRewards, { canAssignGroup, canAddPoints });
         } catch (error) {
             console.error('Failed to load Google attendance grid:', error);
         }
     }
-
-    renderAttendanceGrid(attendanceGrid, editable);
 
     // Load notes
     const notes = localStorage.getItem(`${currentClass}-notes`) || '';
@@ -1044,8 +1315,22 @@ async function addStudentFromInput() {
     saveAttendanceGrid(currentClass, updatedGrid);
     saveStudentRoster(currentClass, updatedGrid.map(row => row.name));
 
+    const rewardsCache = getStudentRewardsCache(currentClass);
+    if (!rewardsCache.some(student => student.fullName.toLowerCase() === name.toLowerCase())) {
+        rewardsCache.push({
+            fullName: name,
+            gmail: '',
+            role: 'student',
+            class: currentClass,
+            approvedDate: '',
+            group: '',
+            points: 0
+        });
+        saveStudentRewardsCache(currentClass, rewardsCache);
+    }
+
     if (googleInitialized && googleAuthToken) {
-        await saveAttendanceToGoogleSheets(updatedGrid);
+        await saveAttendanceToGoogleSheets(updatedGrid, currentClass);
     }
     
     input.value = '';
@@ -1077,7 +1362,7 @@ function markAttendance() {
     saveStudentRoster(currentClass, updatedGrid.map(row => row.name));
 
     if (googleAuthToken && googleInitialized) {
-        saveAttendanceToGoogleSheets(updatedGrid).then(success => {
+        saveAttendanceToGoogleSheets(updatedGrid, currentClass).then(success => {
             if (success) {
                 alert('✅ Attendance saved and synced to Google Sheets!');
             } else {
@@ -1258,6 +1543,12 @@ function setupRoleBasedAccess(userRole, userClass) {
     const classSwitcher = document.getElementById('class-switcher');
     const classViewSelect = document.getElementById('class-view-select');
     const addStudentClassSelector = document.getElementById('add-student-class-selector');
+    const rewardsSection = document.getElementById('student-rewards-section');
+
+    const canManageRewards = userRole === 'director' || userRole === 'admin' || userRole === 'teacher';
+    if (rewardsSection) {
+        rewardsSection.style.display = canManageRewards ? 'block' : 'none';
+    }
 
     if (userRole === 'teacher') {
         // Teachers can only mark attendance for their assigned class
@@ -1277,7 +1568,7 @@ function setupRoleBasedAccess(userRole, userClass) {
         if (viewReportBtn) viewReportBtn.style.display = 'inline-block';
     } else if (userRole === 'director') {
         // Directors can view and update attendance for ALL classes
-        if (classSwitcher) classSwitcher.style.display = 'block';
+        if (classSwitcher) classSwitcher.style.display = 'none';
         if (classViewSelect) classViewSelect.value = currentClass || 'beginners';
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'block';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'inline-block';
@@ -1382,14 +1673,14 @@ function handleAuthClick() {
     }
 }
 
-async function saveAttendanceToGoogleSheets(classData) {
+async function saveAttendanceToGoogleSheets(classData, className = currentClass) {
     if (!googleInitialized || !googleAuthToken) {
         console.log('Google API not ready - data saved locally only');
         return false;
     }
 
     try {
-        const sheetName = getAttendanceSheetName();
+        const sheetName = getAttendanceSheetName(className);
         const values = attendanceGridToSheetValues(classData);
 
         await gapi.client.sheets.spreadsheets.values.clear({
@@ -1414,14 +1705,14 @@ async function saveAttendanceToGoogleSheets(classData) {
     }
 }
 
-async function fetchAttendanceFromGoogleSheets() {
+async function fetchAttendanceFromGoogleSheets(className = currentClass) {
     if (!googleInitialized || !googleAuthToken) {
         console.log('Google API not ready - using local data only');
         return null;
     }
 
     try {
-        const sheetName = getAttendanceSheetName();
+        const sheetName = getAttendanceSheetName(className);
         
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
@@ -1451,6 +1742,10 @@ async function loadDashboardData() {
         document.getElementById('total-teachers-count').textContent = 'Connect Google first';
         document.getElementById('total-directors-count').textContent = 'Connect Google first';
         document.getElementById('today-attendance-count').textContent = 'Connect Google first';
+        const topStudentsList = document.getElementById('top-students-list');
+        const groupPointsList = document.getElementById('group-points-list');
+        if (topStudentsList) topStudentsList.innerHTML = '<p style="color: #999;">Connect Google first</p>';
+        if (groupPointsList) groupPointsList.innerHTML = '<p style="color: #999;">Connect Google first</p>';
         return;
     }
 
@@ -1458,11 +1753,13 @@ async function loadDashboardData() {
         // Load approved users data
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'ApprovedUsers!A:F'
+            range: 'ApprovedUsers!A:H'
         });
 
         const rows = response.result.values || [];
         let students = 0, teachers = 0, directors = 0;
+        const studentLeaderboard = [];
+        const groupTotals = new Map(GROUP_OPTIONS.map(group => [group, 0]));
 
         // Count users by role (skip header)
         for (let i = 1; i < rows.length; i++) {
@@ -1472,6 +1769,19 @@ async function loadDashboardData() {
                 if (role === 'student') students++;
                 else if (role === 'teacher' || role === 'teacher_view') teachers++;
                 else if (role === 'director') directors++;
+            }
+
+            const role = row[1]?.toString().toLowerCase();
+            if (role === 'student') {
+                const fullName = row[0]?.toString().trim() || '';
+                const className = row[4]?.toString().trim() || '';
+                const group = row[6]?.toString().trim() || '';
+                const points = normalizePointsValue(row[7]);
+                studentLeaderboard.push({ fullName, className, group, points });
+                if (!groupTotals.has(group)) {
+                    groupTotals.set(group, 0);
+                }
+                groupTotals.set(group, groupTotals.get(group) + points);
             }
         }
 
@@ -1509,11 +1819,47 @@ async function loadDashboardData() {
 
         document.getElementById('today-attendance-count').textContent = todayAttendance;
 
+        const topStudentsList = document.getElementById('top-students-list');
+        if (topStudentsList) {
+            const top10 = studentLeaderboard
+                .sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName))
+                .slice(0, 10);
+
+            if (!top10.length) {
+                topStudentsList.innerHTML = '<p style="color: #999;">No student points available</p>';
+            } else {
+                topStudentsList.innerHTML = top10.map((student, index) => `
+                    <div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee;">
+                        <div>
+                            <strong>${index + 1}. ${student.fullName}</strong><br>
+                            <span style="color: #666; font-size: 0.9em;">${student.className}${student.group ? ` • ${student.group}` : ''}</span>
+                        </div>
+                        <div style="font-weight: 700; color: #667eea;">${student.points} pts</div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        const groupPointsList = document.getElementById('group-points-list');
+        if (groupPointsList) {
+            const orderedGroups = [...GROUP_OPTIONS, ...Array.from(groupTotals.keys()).filter(group => !GROUP_OPTIONS.includes(group))];
+            groupPointsList.innerHTML = orderedGroups.map(group => `
+                <div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee;">
+                    <strong>${group || 'Unassigned'}</strong>
+                    <span style="font-weight: 700; color: #2e7d32;">${groupTotals.get(group) || 0} pts</span>
+                </div>
+            `).join('');
+        }
+
     } catch (error) {
         console.error('Failed to load dashboard data:', error);
         document.getElementById('total-students-count').textContent = 'Error';
         document.getElementById('total-teachers-count').textContent = 'Error';
         document.getElementById('total-directors-count').textContent = 'Error';
         document.getElementById('today-attendance-count').textContent = 'Error';
+        const topStudentsList = document.getElementById('top-students-list');
+        const groupPointsList = document.getElementById('group-points-list');
+        if (topStudentsList) topStudentsList.innerHTML = '<p style="color: red;">Error loading top students</p>';
+        if (groupPointsList) groupPointsList.innerHTML = '<p style="color: red;">Error loading group points</p>';
     }
 }
