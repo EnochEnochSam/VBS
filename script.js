@@ -6,6 +6,321 @@ const ADMIN_PASS = 'VBSGoodShepherdChurch';
 const START_DATE = new Date(2026, 4, 6); // May 6, 2026
 const END_DATE = new Date(2026, 4, 16); // May 16, 2026
 
+function getAttendanceDateConfigs() {
+    const dates = [];
+    const current = new Date(START_DATE);
+    current.setHours(0, 0, 0, 0);
+
+    const end = new Date(END_DATE);
+    end.setHours(0, 0, 0, 0);
+
+    while (current <= end) {
+        dates.push(new Date(current));
+        current.setDate(current.getDate() + 1);
+    }
+
+    return dates.map(date => ({
+        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
+        label: `${date.getDate()} ${date.toLocaleString('en-US', { month: 'short' })}`
+    }));
+}
+
+function getAttendanceSheetName(className = currentClass) {
+    return className.charAt(0).toUpperCase() + className.slice(1);
+}
+
+function getAttendanceStorageKey(className = currentClass) {
+    return `${className}-attendance-grid`;
+}
+
+function getAttendanceRosterKey(className = currentClass) {
+    return `${className}-student-roster`;
+}
+
+function getAttendanceGrid(className = currentClass) {
+    return JSON.parse(localStorage.getItem(getAttendanceStorageKey(className)) || '[]');
+}
+
+function saveAttendanceGrid(className, grid) {
+    localStorage.setItem(getAttendanceStorageKey(className), JSON.stringify(grid));
+}
+
+function getStudentRoster(className = currentClass) {
+    return JSON.parse(localStorage.getItem(getAttendanceRosterKey(className)) || '[]');
+}
+
+function saveStudentRoster(className, roster) {
+    localStorage.setItem(getAttendanceRosterKey(className), JSON.stringify(roster));
+}
+
+function normalizeStudentName(name) {
+    return (name || '').toString().trim();
+}
+
+function getAttendanceDateKeyMap() {
+    const map = new Map();
+    getAttendanceDateConfigs().forEach(config => map.set(config.key, config.label));
+    return map;
+}
+
+function getDefaultAttendanceGrid(className = currentClass) {
+    const roster = getStudentRoster(className);
+    const dateConfigs = getAttendanceDateConfigs();
+
+    return roster.map(studentName => {
+        const attendance = {};
+        dateConfigs.forEach(config => {
+            attendance[config.key] = '';
+        });
+        return { name: studentName, attendance };
+    });
+}
+
+function mergeAttendanceGrid(grid, className = currentClass) {
+    const dateConfigs = getAttendanceDateConfigs();
+    const roster = getStudentRoster(className);
+    const sourceGrid = Array.isArray(grid) ? grid : [];
+    const sourceByName = new Map(sourceGrid.map(row => [row.name.toLowerCase(), row]));
+    const combinedNames = new Map();
+
+    roster.forEach(studentName => combinedNames.set(studentName.toLowerCase(), studentName));
+    sourceGrid.forEach(row => {
+        if (row?.name) {
+            combinedNames.set(row.name.toLowerCase(), row.name);
+        }
+    });
+
+    if (combinedNames.size === 0) {
+        return sourceGrid.map(row => {
+            const attendance = {};
+            dateConfigs.forEach(config => {
+                attendance[config.key] = row.attendance?.[config.key] || '';
+            });
+            return { name: row.name, attendance };
+        });
+    }
+
+    const merged = [];
+    combinedNames.forEach(studentName => {
+        const existingRow = sourceByName.get(studentName.toLowerCase());
+        const attendance = {};
+        dateConfigs.forEach(config => {
+            attendance[config.key] = existingRow?.attendance?.[config.key] || '';
+        });
+        merged.push({ name: studentName, attendance });
+    });
+
+    return merged;
+}
+
+function getCurrentAttendanceGrid(className = currentClass) {
+    const storedGrid = getAttendanceGrid(className);
+    if (storedGrid.length > 0) {
+        return mergeAttendanceGrid(storedGrid, className);
+    }
+
+    const legacyRecords = JSON.parse(localStorage.getItem(`${className}-attendance-history`) || '[]');
+    if (!legacyRecords.length) {
+        return getDefaultAttendanceGrid(className);
+    }
+
+    const dateConfigs = getAttendanceDateConfigs();
+    const roster = new Map();
+    legacyRecords.forEach(record => {
+        const dateKey = record.date ? record.date : '';
+        (record.students || []).forEach(student => {
+            const studentName = normalizeStudentName(student.name);
+            if (!studentName) return;
+            if (!roster.has(studentName.toLowerCase())) {
+                const attendance = {};
+                dateConfigs.forEach(config => {
+                    attendance[config.key] = '';
+                });
+                roster.set(studentName.toLowerCase(), { name: studentName, attendance });
+            }
+            const row = roster.get(studentName.toLowerCase());
+            const matchedDate = dateConfigs.find(config => config.label === dateKey || config.key === dateKey || new Date(config.key).toLocaleDateString() === dateKey);
+            if (matchedDate) {
+                row.attendance[matchedDate.key] = student.present ? 'Present' : 'Absent';
+            }
+        });
+    });
+
+    const grid = Array.from(roster.values());
+    saveAttendanceGrid(className, grid);
+    saveStudentRoster(className, grid.map(row => row.name));
+    return grid;
+}
+
+function attendanceGridToSheetValues(grid) {
+    const dateConfigs = getAttendanceDateConfigs();
+    return [
+        ['Student Name', ...dateConfigs.map(config => config.label)],
+        ...grid.map(row => [
+            row.name,
+            ...dateConfigs.map(config => row.attendance?.[config.key] || '')
+        ])
+    ];
+}
+
+function sheetValuesToAttendanceGrid(values) {
+    if (!values || values.length === 0) {
+        return [];
+    }
+
+    const firstRow = values[0] || [];
+    const dateConfigs = getAttendanceDateConfigs();
+    const dateKeys = dateConfigs.map(config => config.key);
+
+    if ((firstRow[0] || '').toString().trim().toLowerCase() === 'date') {
+        const gridMap = new Map();
+        for (let i = 1; i < values.length; i++) {
+            const row = values[i] || [];
+            const dateLabel = row[0];
+            const studentName = normalizeStudentName(row[1]);
+            const status = row[2] || '';
+            if (!studentName) continue;
+
+            if (!gridMap.has(studentName.toLowerCase())) {
+                const attendance = {};
+                dateConfigs.forEach(config => {
+                    attendance[config.key] = '';
+                });
+                gridMap.set(studentName.toLowerCase(), { name: studentName, attendance });
+            }
+
+            const matchedDate = dateConfigs.find(config => config.label === dateLabel || config.key === dateLabel || new Date(config.key).toLocaleDateString() === dateLabel);
+            if (matchedDate) {
+                gridMap.get(studentName.toLowerCase()).attendance[matchedDate.key] = status;
+            }
+        }
+        return Array.from(gridMap.values());
+    }
+
+    const headerMap = firstRow.slice(1).map(value => normalizeStudentName(value));
+    const matchingDates = headerMap.map(header => {
+        const matched = dateConfigs.find(config => config.label === header || config.key === header);
+        return matched || null;
+    }).filter(Boolean);
+
+    const rows = [];
+    for (let i = 1; i < values.length; i++) {
+        const row = values[i] || [];
+        const studentName = normalizeStudentName(row[0]);
+        if (!studentName) continue;
+
+        const attendance = {};
+        dateConfigs.forEach(config => {
+            attendance[config.key] = '';
+        });
+
+        matchingDates.forEach((config, index) => {
+            attendance[config.key] = row[index + 1] || '';
+        });
+
+        rows.push({ name: studentName, attendance });
+    }
+
+    return rows;
+}
+
+function renderAttendanceGrid(grid, editable) {
+    const dateConfigs = getAttendanceDateConfigs();
+    attendanceList.innerHTML = '';
+
+    if (!grid || grid.length === 0) {
+        attendanceList.innerHTML = '<p style="text-align: center; color: #999; padding: 12px;">No students available. Add students to begin marking attendance.</p>';
+        return;
+    }
+
+    const table = document.createElement('table');
+    table.id = 'attendance-grid-table';
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+    table.style.backgroundColor = 'white';
+
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headRow.innerHTML = '<th style="position: sticky; left: 0; z-index: 1; background: #667eea; color: white; padding: 10px; text-align: left; min-width: 180px;">Student Name</th>';
+    dateConfigs.forEach(config => {
+        headRow.innerHTML += `<th style="background: #667eea; color: white; padding: 10px; min-width: 110px; white-space: nowrap;">${config.label}</th>`;
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    grid.forEach(row => {
+        const tr = document.createElement('tr');
+        const nameCell = document.createElement('td');
+        nameCell.textContent = row.name;
+        nameCell.style.cssText = 'position: sticky; left: 0; background: #f8f9ff; font-weight: 600; padding: 10px; border-top: 1px solid #eee;';
+        tr.appendChild(nameCell);
+
+        dateConfigs.forEach(config => {
+            const td = document.createElement('td');
+            td.style.cssText = 'padding: 8px; border-top: 1px solid #eee; text-align: center;';
+
+            if (editable) {
+                const select = document.createElement('select');
+                select.dataset.student = row.name;
+                select.dataset.date = config.key;
+                select.style.cssText = 'width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;';
+                select.innerHTML = `
+                    <option value="">-</option>
+                    <option value="Present">Present</option>
+                    <option value="Absent">Absent</option>
+                `;
+                select.value = row.attendance?.[config.key] || '';
+                td.appendChild(select);
+            } else {
+                const value = row.attendance?.[config.key] || '';
+                td.textContent = value || '-';
+                td.style.fontWeight = '600';
+                if (value === 'Present') {
+                    td.style.color = '#fff';
+                    td.style.backgroundColor = '#4CAF50';
+                } else if (value === 'Absent') {
+                    td.style.color = '#fff';
+                    td.style.backgroundColor = '#f44336';
+                } else {
+                    td.style.color = '#999';
+                    td.style.backgroundColor = '#f5f5f5';
+                }
+            }
+
+            tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    attendanceList.appendChild(table);
+}
+
+function getAttendanceGridFromUI() {
+    const grid = getCurrentAttendanceGrid();
+    const dateConfigs = getAttendanceDateConfigs();
+    const gridByName = new Map(grid.map(row => [row.name.toLowerCase(), row]));
+
+    attendanceList.querySelectorAll('select[data-student][data-date]').forEach(select => {
+        const studentName = normalizeStudentName(select.dataset.student);
+        const dateKey = select.dataset.date;
+        const row = gridByName.get(studentName.toLowerCase());
+        if (row) {
+            row.attendance[dateKey] = select.value;
+        }
+    });
+
+    return Array.from(gridByName.values()).map(row => {
+        const attendance = {};
+        dateConfigs.forEach(config => {
+            attendance[config.key] = row.attendance?.[config.key] || '';
+        });
+        return { name: row.name, attendance };
+    });
+}
+
 console.log('Script loaded successfully');
 
 function isWithinDateRange() {
@@ -546,7 +861,7 @@ async function userLogin() {
             classSection.style.display = 'block';
             updateClassTitle();
             setupRoleBasedAccess(currentRole, user.class);
-            loadClassData();
+            await loadClassData();
             document.getElementById('user-gmail').value = '';
             document.getElementById('user-password').value = '';
         } else {
@@ -568,15 +883,15 @@ function updateClassTitle() {
     }
 }
 
-function switchClassView() {
+async function switchClassView() {
     const selectedClass = document.getElementById('class-view-select').value;
     if (!selectedClass) return;
     currentClass = selectedClass;
     updateClassTitle();
-    loadClassData();
+    await loadClassData();
 }
 
-function accessClass() {
+async function accessClass() {
     const selectedClass = document.getElementById('class-select').value;
     currentClass = selectedClass;
     currentRole = 'admin';
@@ -584,7 +899,7 @@ function accessClass() {
     classSection.style.display = 'block';
     updateClassTitle();
     setupRoleBasedAccess('admin', selectedClass);
-    loadClassData();
+    await loadClassData();
 }
 
 function updateGoogleStatus() {
@@ -636,7 +951,7 @@ function updateGoogleStatus() {
     }
 }
 
-function loadClassData() {
+async function loadClassData() {
     const withinRange = isWithinDateRange();
     const dateStatus = getDateRangeStatus();
     
@@ -667,21 +982,23 @@ function loadClassData() {
         if (existingStatus) existingStatus.remove();
     }
     
-    // Load attendance from today's history
-    const attendanceRecords = JSON.parse(localStorage.getItem(`${currentClass}-attendance-history`) || '[]');
-    const today = new Date().toLocaleDateString();
-    const todayAttendance = attendanceRecords.find(r => r.date === today)?.students || [];
-    
-    attendanceList.innerHTML = '';
-    todayAttendance.forEach(student => {
-        const div = document.createElement('div');
-        div.className = 'student';
-        div.innerHTML = `
-            <input type="checkbox" id="${student.name}" ${student.present ? 'checked' : ''} ${!withinRange ? 'disabled' : ''}>
-            <label for="${student.name}">${student.name}</label>
-        `;
-        attendanceList.appendChild(div);
-    });
+    const editable = !['teacher_view', 'student'].includes(currentRole);
+    let attendanceGrid = getCurrentAttendanceGrid();
+
+    if (googleInitialized && googleAuthToken) {
+        try {
+            const remoteGrid = await fetchAttendanceFromGoogleSheets();
+            if (remoteGrid && remoteGrid.length > 0) {
+                attendanceGrid = mergeAttendanceGrid(remoteGrid, currentClass);
+                saveAttendanceGrid(currentClass, attendanceGrid);
+                saveStudentRoster(currentClass, attendanceGrid.map(row => row.name));
+            }
+        } catch (error) {
+            console.error('Failed to load Google attendance grid:', error);
+        }
+    }
+
+    renderAttendanceGrid(attendanceGrid, editable);
 
     // Load notes
     const notes = localStorage.getItem(`${currentClass}-notes`) || '';
@@ -696,7 +1013,7 @@ function loadClassData() {
     updateGoogleStatus();
 }
 
-function addStudentFromInput() {
+async function addStudentFromInput() {
     if (!isWithinDateRange()) {
         alert(`Features are not available. ${getDateRangeStatus()}`);
         return;
@@ -709,34 +1026,30 @@ function addStudentFromInput() {
         return;
     }
     
-    // Check if student already exists
-    const records = JSON.parse(localStorage.getItem(`${currentClass}-attendance-history`) || '[]');
-    let studentExists = false;
-    records.forEach(record => {
-        if (record.students.some(s => s.name === name)) {
-            studentExists = true;
-        }
-    });
-    
+    const grid = getCurrentAttendanceGrid();
+    const studentExists = grid.some(row => row.name.toLowerCase() === name.toLowerCase());
+
     if (studentExists) {
         alert('❌ This student is already added.');
         return;
     }
-    
-    // Add student to today's attendance
-    const today = new Date().toLocaleDateString();
-    let todayRecord = records.find(r => r.date === today);
-    
-    if (!todayRecord) {
-        todayRecord = { date: today, students: [] };
-        records.push(todayRecord);
+
+    const dateConfigs = getAttendanceDateConfigs();
+    const newRow = { name, attendance: {} };
+    dateConfigs.forEach(config => {
+        newRow.attendance[config.key] = '';
+    });
+
+    const updatedGrid = [...grid, newRow];
+    saveAttendanceGrid(currentClass, updatedGrid);
+    saveStudentRoster(currentClass, updatedGrid.map(row => row.name));
+
+    if (googleInitialized && googleAuthToken) {
+        await saveAttendanceToGoogleSheets(updatedGrid);
     }
     
-    todayRecord.students.push({ name, present: false });
-    localStorage.setItem(`${currentClass}-attendance-history`, JSON.stringify(records));
-    
     input.value = '';
-    loadClassData();
+    await loadClassData();
     alert(`✅ ${name} added successfully!`);
 }
 
@@ -759,40 +1072,20 @@ function markAttendance() {
         alert(`⏰ Features are not available. ${getDateRangeStatus()}`);
         return;
     }
-    const checkboxes = attendanceList.querySelectorAll('input[type="checkbox"]');
-    const today = new Date().toLocaleDateString();
-    const attendanceRecords = JSON.parse(localStorage.getItem(`${currentClass}-attendance-history`) || '[]');
-    
-    const todayRecord = {
-        date: today,
-        students: []
-    };
-    
-    checkboxes.forEach(cb => {
-        todayRecord.students.push({ name: cb.nextElementSibling.textContent, present: cb.checked });
-    });
-    
-    // Check if record for today already exists
-    const existingIndex = attendanceRecords.findIndex(r => r.date === today);
-    if (existingIndex !== -1) {
-        attendanceRecords[existingIndex] = todayRecord;
-    } else {
-        attendanceRecords.push(todayRecord);
-    }
-    
-    localStorage.setItem(`${currentClass}-attendance-history`, JSON.stringify(attendanceRecords));
-    
-    // Save to Google Sheets if authenticated
+    const updatedGrid = getAttendanceGridFromUI();
+    saveAttendanceGrid(currentClass, updatedGrid);
+    saveStudentRoster(currentClass, updatedGrid.map(row => row.name));
+
     if (googleAuthToken && googleInitialized) {
-        saveAttendanceToGoogleSheets(todayRecord.students).then(success => {
+        saveAttendanceToGoogleSheets(updatedGrid).then(success => {
             if (success) {
-                alert('✅ Attendance marked and synced to Google Sheets!');
+                alert('✅ Attendance saved and synced to Google Sheets!');
             } else {
-                alert('✅ Attendance marked (not synced - will retry when authenticated)');
+                alert('✅ Attendance saved locally (Google sync failed - will retry when connected)');
             }
         });
     } else {
-        alert('✅ Attendance marked (saved locally - authenticate with Google to sync)');
+        alert('✅ Attendance saved locally (connect Google to sync)');
     }
 }
 
@@ -835,12 +1128,9 @@ function logoutUser() {
 }
 
 async function viewAttendanceReport() {
-    // Try to fetch data from Google Sheets first
     let attendanceRecords = await fetchAttendanceFromGoogleSheets();
-    
-    // If Google Sheets data is not available, use localStorage
     if (!attendanceRecords) {
-        attendanceRecords = JSON.parse(localStorage.getItem(`${currentClass}-attendance-history`) || '[]');
+        attendanceRecords = getCurrentAttendanceGrid(currentClass);
         console.log('Using localStorage data for attendance report');
     }
     
@@ -853,30 +1143,17 @@ async function viewAttendanceReport() {
         return;
     }
     
-    // Sort records by date (oldest first)
-    const sortedRecords = [...attendanceRecords].sort((a, b) => new Date(a.date) - new Date(b.date));
-    
-    // Get all unique dates
-    const dates = sortedRecords.map(r => r.date);
-    
-    // Get all unique students across all dates
-    const studentsSet = new Set();
-    sortedRecords.forEach(record => {
-        record.students.forEach(student => {
-            studentsSet.add(student.name);
-        });
-    });
-    const allStudents = Array.from(studentsSet).sort();
-    
-    // Build table header with dates as columns
+    const dateConfigs = getAttendanceDateConfigs();
+    const sortedRecords = [...attendanceRecords].sort((a, b) => a.name.localeCompare(b.name));
+
     const table = document.getElementById('attendance-table');
     const thead = table.querySelector('thead');
     thead.innerHTML = '';
     
     const headerRow = document.createElement('tr');
     headerRow.innerHTML = '<th style="background-color: #667eea; color: white; min-width: 150px;">Student Name</th>';
-    dates.forEach(date => {
-        headerRow.innerHTML += `<th style="background-color: #667eea; color: white; padding: 10px; white-space: nowrap;">${date}</th>`;
+    dateConfigs.forEach(config => {
+        headerRow.innerHTML += `<th style="background-color: #667eea; color: white; padding: 10px; white-space: nowrap;">${config.label}</th>`;
     });
     thead.appendChild(headerRow);
     
@@ -887,50 +1164,27 @@ async function viewAttendanceReport() {
     let totalPresent = 0;
     let totalAbsent = 0;
     let totalNotOnRoll = 0;
-    
-    allStudents.forEach(studentName => {
+
+    sortedRecords.forEach(studentRow => {
         const row = document.createElement('tr');
-        row.innerHTML = `<td style="font-weight: bold; background-color: #f8f9ff; padding: 10px;">${studentName}</td>`;
-        
-        // Find the first date this student appears
-        let firstDateIndex = -1;
-        for (let i = 0; i < sortedRecords.length; i++) {
-            const hasStudent = sortedRecords[i].students.some(s => s.name === studentName);
-            if (hasStudent) {
-                firstDateIndex = i;
-                break;
-            }
-        }
-        
-        dates.forEach((date, dateIndex) => {
-            const record = sortedRecords.find(r => r.date === date);
-            let cell = '';
+        row.innerHTML = `<td style="font-weight: bold; background-color: #f8f9ff; padding: 10px;">${studentRow.name}</td>`;
+
+        dateConfigs.forEach(config => {
+            const value = studentRow.attendance?.[config.key] || '';
+            let cell = value || '-';
             let cellStyle = 'padding: 10px; text-align: center; font-weight: bold;';
-            
-            if (record) {
-                const studentRecord = record.students.find(s => s.name === studentName);
-                if (studentRecord) {
-                    if (studentRecord.present) {
-                        cell = '✓';
-                        cellStyle += ' color: white; background-color: #4CAF50;';
-                        totalPresent++;
-                    } else {
-                        cell = '✗';
-                        cellStyle += ' color: white; background-color: #f44336;';
-                        totalAbsent++;
-                    }
-                } else {
-                    // Student not on roll for this date (added later)
-                    cell = '-';
-                    cellStyle += ' color: #999; background-color: #f5f5f5;';
-                    totalNotOnRoll++;
-                }
+
+            if (value === 'Present') {
+                cellStyle += ' color: white; background-color: #4CAF50;';
+                totalPresent++;
+            } else if (value === 'Absent') {
+                cellStyle += ' color: white; background-color: #f44336;';
+                totalAbsent++;
             } else {
-                cell = '-';
                 cellStyle += ' color: #999; background-color: #f5f5f5;';
                 totalNotOnRoll++;
             }
-            
+
             row.innerHTML += `<td style="${cellStyle}">${cell}</td>`;
         });
         tbody.appendChild(row);
@@ -940,7 +1194,7 @@ async function viewAttendanceReport() {
     const totalRecords = totalPresent + totalAbsent;
     const attendanceRate = totalRecords > 0 ? ((totalPresent / totalRecords) * 100).toFixed(2) : 0;
     
-    document.getElementById('total-students').textContent = allStudents.length;
+    document.getElementById('total-students').textContent = sortedRecords.length;
     document.getElementById('present-count').textContent = totalPresent;
     document.getElementById('absent-count').textContent = totalAbsent;
     document.getElementById('attendance-rate').textContent = attendanceRate + '%';
@@ -951,20 +1205,18 @@ async function viewAttendanceReport() {
 
 function removeStudent(index) {
     if (confirm('Are you sure you want to remove this student?')) {
-        const attendance = JSON.parse(localStorage.getItem(`${currentClass}-attendance`) || '[]');
+        const attendance = getCurrentAttendanceGrid();
         attendance.splice(index, 1);
-        localStorage.setItem(`${currentClass}-attendance`, JSON.stringify(attendance));
+        saveAttendanceGrid(currentClass, attendance);
+        saveStudentRoster(currentClass, attendance.map(row => row.name));
         viewAttendanceReport();
     }
 }
 
 async function downloadAttendanceCSV() {
-    // Try to fetch data from Google Sheets first
     let attendanceRecords = await fetchAttendanceFromGoogleSheets();
-    
-    // If Google Sheets data is not available, use localStorage
     if (!attendanceRecords) {
-        attendanceRecords = JSON.parse(localStorage.getItem(`${currentClass}-attendance-history`) || '[]');
+        attendanceRecords = getCurrentAttendanceGrid(currentClass);
         console.log('Using localStorage data for CSV download');
     }
     
@@ -975,34 +1227,13 @@ async function downloadAttendanceCSV() {
         return;
     }
     
-    // Sort records by date (oldest first)
-    const sortedRecords = [...attendanceRecords].sort((a, b) => new Date(a.date) - new Date(b.date));
-    const dates = sortedRecords.map(r => r.date);
-    
-    // Get all unique students
-    const studentsSet = new Set();
-    sortedRecords.forEach(record => {
-        record.students.forEach(student => {
-            studentsSet.add(student.name);
-        });
-    });
-    const allStudents = Array.from(studentsSet).sort();
-    
-    // Build CSV in pivot format (students as rows, dates as columns)
-    let csvContent = 'Student Name,' + dates.join(',') + '\n';
-    
-    allStudents.forEach(studentName => {
-        let row = studentName;
-        dates.forEach(date => {
-            const record = sortedRecords.find(r => r.date === date);
-            let status = '-';
-            if (record) {
-                const studentRecord = record.students.find(s => s.name === studentName);
-                if (studentRecord) {
-                    status = studentRecord.present ? 'Present' : 'Absent';
-                }
-            }
-            row += ',' + status;
+    const dateConfigs = getAttendanceDateConfigs();
+    let csvContent = 'Student Name,' + dateConfigs.map(config => config.label).join(',') + '\n';
+
+    attendanceRecords.sort((a, b) => a.name.localeCompare(b.name)).forEach(studentRow => {
+        let row = studentRow.name;
+        dateConfigs.forEach(config => {
+            row += ',' + (studentRow.attendance?.[config.key] || '-');
         });
         csvContent += row + '\n';
     });
@@ -1158,28 +1389,20 @@ async function saveAttendanceToGoogleSheets(classData) {
     }
 
     try {
-        const today = new Date().toLocaleDateString();
-        const sheetName = currentClass.charAt(0).toUpperCase() + currentClass.slice(1);
-        await ensureAttendanceSheetHeader(sheetName);
-        
-        // Prepare the data
-        const values = [
-            ['Date', 'Student Name', 'Status', 'Timestamp'],
-            ...classData.map(student => [
-                today,
-                student.name,
-                student.present ? 'Present' : 'Absent',
-                new Date().toLocaleTimeString()
-            ])
-        ];
+        const sheetName = getAttendanceSheetName();
+        const values = attendanceGridToSheetValues(classData);
 
-        // Append to sheet
-        const response = await gapi.client.sheets.spreadsheets.values.append({
+        await gapi.client.sheets.spreadsheets.values.clear({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `${sheetName}!A:D`,
+            range: `${sheetName}!A:Z`
+        });
+
+        const response = await gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `${sheetName}!A1`,
             valueInputOption: 'RAW',
             resource: {
-                values: values.slice(1) // Skip header if already exists
+                values
             }
         });
 
@@ -1191,34 +1414,6 @@ async function saveAttendanceToGoogleSheets(classData) {
     }
 }
 
-async function ensureAttendanceSheetHeader(sheetName) {
-    try {
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `${sheetName}!A1:D1`
-        });
-
-        const header = response.result.values && response.result.values[0] ? response.result.values[0] : [];
-        const normalizedHeader = header.map(cell => (cell || '').toString().trim().toLowerCase());
-        const expectedHeader = ['date', 'student name', 'status', 'timestamp'];
-        const hasExpectedHeader = expectedHeader.every((value, index) => normalizedHeader[index] === value);
-
-        if (!hasExpectedHeader) {
-            await gapi.client.sheets.spreadsheets.values.update({
-                spreadsheetId: GOOGLE_SPREADSHEET_ID,
-                range: `${sheetName}!A1:D1`,
-                valueInputOption: 'RAW',
-                resource: {
-                    values: [['Date', 'Student Name', 'Status', 'Timestamp']]
-                }
-            });
-        }
-    } catch (error) {
-        console.error('Failed to ensure attendance sheet header:', error);
-        throw error;
-    }
-}
-
 async function fetchAttendanceFromGoogleSheets() {
     if (!googleInitialized || !googleAuthToken) {
         console.log('Google API not ready - using local data only');
@@ -1226,13 +1421,11 @@ async function fetchAttendanceFromGoogleSheets() {
     }
 
     try {
-        const sheetName = currentClass.charAt(0).toUpperCase() + currentClass.slice(1);
-        await ensureAttendanceSheetHeader(sheetName);
+        const sheetName = getAttendanceSheetName();
         
-        // Read all data from the sheet
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `${sheetName}!A:D`
+            range: `${sheetName}!A:Z`
         });
 
         const values = response.result.values;
@@ -1241,38 +1434,9 @@ async function fetchAttendanceFromGoogleSheets() {
             return null;
         }
 
-        // Convert sheet data to attendance records format
-        const attendanceRecords = [];
-        const recordsByDate = {};
-
-        // Skip header row when present and process data
-        const firstRow = values[0] || [];
-        const firstRowNormalized = firstRow.map(cell => (cell || '').toString().trim().toLowerCase());
-        const startIndex = firstRowNormalized[0] === 'date' && firstRowNormalized[1] === 'student name' ? 1 : 0;
-
-        for (let i = startIndex; i < values.length; i++) {
-            const row = values[i];
-            if (row.length >= 3) {
-                const date = row[0];
-                const studentName = row[1];
-                const status = row[2]; // 'Present' or 'Absent'
-
-                if (!recordsByDate[date]) {
-                    recordsByDate[date] = { date, students: [] };
-                }
-
-                const present = status === 'Present';
-                recordsByDate[date].students.push({ name: studentName, present });
-            }
-        }
-
-        // Convert to array format
-        Object.values(recordsByDate).forEach(record => {
-            attendanceRecords.push(record);
-        });
-
-        console.log('Fetched attendance records from Google Sheets:', attendanceRecords);
-        return attendanceRecords;
+        const attendanceGrid = sheetValuesToAttendanceGrid(values);
+        console.log('Fetched attendance grid from Google Sheets:', attendanceGrid);
+        return attendanceGrid;
     } catch (error) {
         console.error('Failed to fetch from Google Sheets:', error);
         return null;
@@ -1316,24 +1480,27 @@ async function loadDashboardData() {
         document.getElementById('total-directors-count').textContent = directors;
 
         // Load today's attendance count
-        const today = new Date().toLocaleDateString();
+        const dashboardDateKey = (function () {
+            const dateConfigs = getAttendanceDateConfigs();
+            const todayKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+            return dateConfigs.some(config => config.key === todayKey) ? todayKey : dateConfigs[0].key;
+        })();
         let todayAttendance = 0;
 
-        // Check all class sheets for today's attendance
+        // Check all class sheets for the selected attendance day
         for (const className of CLASS_LIST) {
             try {
                 const sheetResponse = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_SPREADSHEET_ID,
-                    range: `${className.charAt(0).toUpperCase() + className.slice(1)}!A:C`
+                    range: `${className.charAt(0).toUpperCase() + className.slice(1)}!A:Z`
                 });
 
-                const sheetRows = sheetResponse.result.values || [];
-                for (let i = 1; i < sheetRows.length; i++) {
-                    const row = sheetRows[i];
-                    if (row.length >= 3 && row[0] === today && row[2] === 'Present') {
+                const attendanceGrid = sheetValuesToAttendanceGrid(sheetResponse.result.values || []);
+                attendanceGrid.forEach(row => {
+                    if (row.attendance?.[dashboardDateKey] === 'Present') {
                         todayAttendance++;
                     }
-                }
+                });
             } catch (error) {
                 // Sheet might not exist, continue
                 console.log(`Sheet ${className} not found or empty`);
