@@ -7,6 +7,8 @@ const START_DATE = new Date(2026, 4, 6); // May 6, 2026
 const END_DATE = new Date(2026, 4, 16); // May 16, 2026
 let classDataLoadToken = 0;
 const GROUP_OPTIONS = ['Girls 1', 'Girls 2', 'Girls 3', 'Girls 4', 'Boys 1', 'Boys 2', 'Boys 3', 'Boys 4'];
+let classSheetRewardsMigrationDone = false;
+let classSheetRewardsMigrationPromise = null;
 
 function getStudentRewardsStorageKey(className = currentClass) {
     return `${className}-student-rewards`;
@@ -92,50 +94,200 @@ async function getClassStudentRewards(className = currentClass) {
     const cachedStudents = getStudentRewardsCache(className);
     const approvedUsers = await fetchApprovedUsersFromSheets();
 
+    // If Google not available, fall back to cache
     if (!approvedUsers) {
         return cachedStudents;
     }
 
-    const classStudents = approvedUsers.filter(user => user.role === 'student' && user.class === className);
-    const mergedStudents = mergeStudentRewards(classStudents, cachedStudents);
-    saveStudentRewardsCache(className, mergedStudents);
-    return mergedStudents;
+    // Build a map of approved students for this class
+    const classApproved = approvedUsers.filter(user => user.role === 'student' && user.class === className);
+
+    // Try to read group/points from the class sheet
+    let sheetStudents = [];
+    if (googleInitialized && googleAuthToken) {
+        const remoteGrid = await fetchAttendanceFromGoogleSheets(className);
+        if (remoteGrid && remoteGrid.length > 0) {
+            sheetStudents = remoteGrid.map(row => ({
+                fullName: row.name,
+                group: row.group || '',
+                points: normalizePointsValue(row.points || 0)
+            }));
+        }
+    }
+
+    // Merge approved users with sheet data and cache
+    const sheetMap = new Map((sheetStudents || []).map(s => [s.fullName.toLowerCase(), s]));
+    const merged = classApproved.map(user => {
+        const key = (user.fullName || '').toLowerCase();
+        const sheetEntry = sheetMap.get(key) || {};
+        const cacheEntry = (cachedStudents || []).find(c => buildStudentRewardKey(c) === buildStudentRewardKey(user)) || {};
+        return {
+            fullName: user.fullName,
+            gmail: user.gmail,
+            role: user.role,
+            class: user.class,
+            group: sheetEntry.group || cacheEntry.group || user.group || '',
+            points: normalizePointsValue(sheetEntry.points ?? cacheEntry.points ?? user.points ?? 0)
+        };
+    });
+
+    // Include any cached-only students that are not in approved list
+    const mergedKeys = new Set(merged.map(s => s.fullName.toLowerCase()));
+    (cachedStudents || []).forEach(c => {
+        if (!mergedKeys.has((c.fullName || c.fullName).toLowerCase())) {
+            merged.push({
+                fullName: c.fullName,
+                gmail: c.gmail || '',
+                role: 'student',
+                class: className,
+                group: c.group || '',
+                points: normalizePointsValue(c.points)
+            });
+        }
+    });
+
+    saveStudentRewardsCache(className, merged);
+    return merged;
 }
 
 async function updateApprovedUserRewards(gmail, updates) {
+    // Persist group/points to the class attendance sheet for the student's class
     if (!googleInitialized || !googleAuthToken) {
         return false;
     }
 
     try {
-        const response = await gapi.client.sheets.spreadsheets.values.get({
+        // First find the student's full name and class from ApprovedUsers
+        const resp = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'ApprovedUsers!A:H'
+            range: 'ApprovedUsers!A:E'
         });
-
-        const rows = response.result.values || [];
+        const rows = resp.result.values || [];
+        let fullName = null;
+        let studentClass = null;
         for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            if (row[2] && row[2].toString().trim().toLowerCase() === gmail.toLowerCase()) {
-                const group = updates.group !== undefined ? updates.group : (row[6] || '');
-                const points = updates.points !== undefined ? normalizePointsValue(updates.points) : normalizePointsValue(row[7]);
-
-                await gapi.client.sheets.spreadsheets.values.update({
-                    spreadsheetId: GOOGLE_SPREADSHEET_ID,
-                    range: `ApprovedUsers!G${i + 1}:H${i + 1}`,
-                    valueInputOption: 'RAW',
-                    resource: {
-                        values: [[group, points]]
-                    }
-                });
-                return true;
+            const r = rows[i];
+            if (r[2] && r[2].toString().trim().toLowerCase() === gmail.toLowerCase()) {
+                fullName = r[0]?.toString().trim() || null;
+                studentClass = r[4]?.toString().trim().toLowerCase() || currentClass;
+                break;
             }
         }
-        return false;
+
+        // Fallback: if we couldn't find via ApprovedUsers, use currentClass and attempt match by name
+        const targetClass = studentClass || currentClass;
+        const sheetName = getAttendanceSheetName(targetClass);
+        const dateConfigs = getAttendanceDateConfigs();
+
+        // Fetch sheet values
+        const sheetResp = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `${sheetName}!A:Z`
+        });
+        const values = sheetResp.result.values || [];
+
+        // Find student row by fullName (or by gmail-mapped fullname)
+        let rowIndex = -1;
+        for (let i = 1; i < values.length; i++) {
+            const r = values[i] || [];
+            const name = normalizeStudentName(r[0]);
+            if (fullName && name.toLowerCase() === fullName.toLowerCase()) {
+                rowIndex = i + 1;
+                break;
+            }
+        }
+
+        // If not found, append a new row for the student
+        if (rowIndex === -1) {
+            const emptyDates = dateConfigs.map(() => '');
+            const groupVal = updates.group !== undefined ? updates.group : '';
+            const pointsVal = updates.points !== undefined ? normalizePointsValue(updates.points) : 0;
+            await gapi.client.sheets.spreadsheets.values.append({
+                spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                range: `${sheetName}!A:Z`,
+                valueInputOption: 'RAW',
+                resource: { values: [[fullName || '', ...emptyDates, groupVal, String(pointsVal)]] }
+            });
+            // Update local cache/grid
+            const localGrid = getAttendanceGrid(targetClass) || [];
+            const newRow = { name: fullName || '', attendance: {} };
+            dateConfigs.forEach(cfg => newRow.attendance[cfg.key] = '');
+            newRow.group = groupVal;
+            newRow.points = pointsVal;
+            localGrid.push(newRow);
+            saveAttendanceGrid(targetClass, localGrid);
+            const rewardsCache = getStudentRewardsCache(targetClass) || [];
+            rewardsCache.push({ fullName: fullName || '', gmail: gmail || '', role: 'student', class: targetClass, group: groupVal, points: pointsVal });
+            saveStudentRewardsCache(targetClass, rewardsCache);
+            refreshDashboardIfVisible();
+            return true;
+        }
+
+        // Compute column letters for Group and Points
+        const dateCount = dateConfigs.length;
+        const groupColIndex = 1 + dateCount + 1; // 1-based: A=1
+        const pointsColIndex = groupColIndex + 1;
+        const groupCol = columnLetter(groupColIndex);
+        const pointsCol = columnLetter(pointsColIndex);
+
+        const groupVal = updates.group !== undefined ? updates.group : '';
+        const pointsVal = updates.points !== undefined ? normalizePointsValue(updates.points) : 0;
+
+        await gapi.client.sheets.spreadsheets.values.update({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `${sheetName}!${groupCol}${rowIndex}:${pointsCol}${rowIndex}`,
+            valueInputOption: 'RAW',
+            resource: { values: [[groupVal, String(pointsVal)]] }
+        });
+
+        // Update local cache/grid
+        const localGrid = getAttendanceGrid(targetClass) || [];
+        const keyName = (fullName || '').toLowerCase();
+        let found = false;
+        for (let i = 0; i < localGrid.length; i++) {
+            if ((localGrid[i].name || '').toLowerCase() === keyName) {
+                localGrid[i].group = groupVal;
+                localGrid[i].points = pointsVal;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            const newRow = { name: fullName || '', attendance: {} };
+            dateConfigs.forEach(cfg => newRow.attendance[cfg.key] = '');
+            newRow.group = groupVal;
+            newRow.points = pointsVal;
+            localGrid.push(newRow);
+        }
+        saveAttendanceGrid(targetClass, localGrid);
+        // Update rewards cache
+        const rewardsCache = getStudentRewardsCache(targetClass) || [];
+        const cacheIndex = rewardsCache.findIndex(s => (s.fullName || '').toLowerCase() === keyName || (s.gmail || '').toLowerCase() === (gmail || '').toLowerCase());
+        if (cacheIndex >= 0) {
+            rewardsCache[cacheIndex].group = groupVal;
+            rewardsCache[cacheIndex].points = pointsVal;
+        } else {
+            rewardsCache.push({ fullName: fullName || '', gmail: gmail || '', role: 'student', class: targetClass, group: groupVal, points: pointsVal });
+        }
+        saveStudentRewardsCache(targetClass, rewardsCache);
+
+        refreshDashboardIfVisible();
+        return true;
     } catch (error) {
-        console.error('Failed to update approved user rewards:', error);
+        console.error('Failed to update class student rewards:', error);
         return false;
     }
+}
+
+// Helper: convert 1-based column index to letter (1 -> A)
+function columnLetter(n) {
+    let s = '';
+    while (n > 0) {
+        let m = (n - 1) % 26;
+        s = String.fromCharCode(65 + m) + s;
+        n = Math.floor((n - 1) / 26);
+    }
+    return s;
 }
 
 function refreshDashboardIfVisible() {
@@ -293,10 +445,12 @@ function getCurrentAttendanceGrid(className = currentClass) {
 function attendanceGridToSheetValues(grid) {
     const dateConfigs = getAttendanceDateConfigs();
     return [
-        ['Student Name', ...dateConfigs.map(config => config.label)],
+        ['Student Name', ...dateConfigs.map(config => config.label), 'Group', 'Points'],
         ...grid.map(row => [
             row.name,
-            ...dateConfigs.map(config => row.attendance?.[config.key] || '')
+            ...dateConfigs.map(config => row.attendance?.[config.key] || ''),
+            row.group || '',
+            String(normalizePointsValue(row.points))
         ])
     ];
 }
@@ -356,7 +510,12 @@ function sheetValuesToAttendanceGrid(values) {
             attendance[config.key] = row[index + 1] || '';
         });
 
-        rows.push({ name: studentName, attendance });
+        // Detect optional trailing columns for Group and Points
+        const expectedDateCount = matchingDates.length;
+        const group = row[1 + expectedDateCount] || '';
+        const points = normalizePointsValue(row[1 + expectedDateCount + 1]);
+
+        rows.push({ name: studentName, attendance, group: group || '', points });
     }
 
     return rows;
@@ -1249,6 +1408,7 @@ async function loadClassData() {
 
     if (googleInitialized && googleAuthToken) {
         try {
+            await ensureClassSheetRewardsMigrated();
             const remoteGrid = await fetchAttendanceFromGoogleSheets(activeClass);
             if (loadToken !== classDataLoadToken || activeClass !== currentClass) {
                 return;
@@ -1750,6 +1910,7 @@ async function loadDashboardData() {
     }
 
     try {
+        await ensureClassSheetRewardsMigrated();
         // Load approved users data
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
@@ -1770,18 +1931,36 @@ async function loadDashboardData() {
                 else if (role === 'teacher' || role === 'teacher_view') teachers++;
                 else if (role === 'director') directors++;
             }
+        }
 
-            const role = row[1]?.toString().toLowerCase();
-            if (role === 'student') {
-                const fullName = row[0]?.toString().trim() || '';
-                const className = row[4]?.toString().trim() || '';
-                const group = row[6]?.toString().trim() || '';
-                const points = normalizePointsValue(row[7]);
-                studentLeaderboard.push({ fullName, className, group, points });
-                if (!groupTotals.has(group)) {
-                    groupTotals.set(group, 0);
+        // Aggregate student points and groups by scanning class sheets (points now stored per-class)
+        for (const className of CLASS_LIST) {
+            try {
+                const sheetResponse = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                    range: `${className.charAt(0).toUpperCase() + className.slice(1)}!A:Z`
+                });
+
+                const values = sheetResponse.result.values || [];
+                if (values.length <= 1) continue;
+
+                const header = values[0] || [];
+                const dateConfigs = getAttendanceDateConfigs();
+                const expectedDateCount = dateConfigs.length;
+
+                for (let r = 1; r < values.length; r++) {
+                    const row = values[r] || [];
+                    const fullName = (row[0] || '').toString().trim();
+                    if (!fullName) continue;
+                    const group = row[1 + expectedDateCount] || '';
+                    const points = normalizePointsValue(row[1 + expectedDateCount + 1]);
+                    studentLeaderboard.push({ fullName, className: className.charAt(0).toUpperCase() + className.slice(1), group, points });
+                    if (!groupTotals.has(group)) groupTotals.set(group, 0);
+                    groupTotals.set(group, groupTotals.get(group) + points);
                 }
-                groupTotals.set(group, groupTotals.get(group) + points);
+            } catch (error) {
+                // Sheet might not exist, continue
+                console.log(`Sheet ${className} not found or empty while aggregating points`);
             }
         }
 
@@ -1862,4 +2041,103 @@ async function loadDashboardData() {
         if (topStudentsList) topStudentsList.innerHTML = '<p style="color: red;">Error loading top students</p>';
         if (groupPointsList) groupPointsList.innerHTML = '<p style="color: red;">Error loading group points</p>';
     }
+}
+
+async function ensureClassSheetRewardsMigrated() {
+    if (classSheetRewardsMigrationDone) {
+        return true;
+    }
+    if (classSheetRewardsMigrationPromise) {
+        return classSheetRewardsMigrationPromise;
+    }
+    if (!googleInitialized || !googleAuthToken) {
+        return false;
+    }
+
+    classSheetRewardsMigrationPromise = (async () => {
+        try {
+            const approvedUsers = await fetchApprovedUsersFromSheets();
+            if (!approvedUsers || approvedUsers.length === 0) {
+                classSheetRewardsMigrationDone = true;
+                return true;
+            }
+
+            const dateConfigs = getAttendanceDateConfigs();
+            const emptyDates = dateConfigs.map(() => '');
+            const groupColIndex = 1 + dateConfigs.length + 1; // A + dates + Group
+            const pointsColIndex = groupColIndex + 1;
+            const groupCol = columnLetter(groupColIndex);
+            const pointsCol = columnLetter(pointsColIndex);
+
+            for (const className of CLASS_LIST) {
+                const students = approvedUsers.filter(user => user.role === 'student' && user.class === className);
+                if (!students.length) {
+                    continue;
+                }
+
+                const sheetName = getAttendanceSheetName(className);
+                let values = [];
+
+                try {
+                    const sheetResp = await gapi.client.sheets.spreadsheets.values.get({
+                        spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                        range: `${sheetName}!A:Z`
+                    });
+                    values = sheetResp.result.values || [];
+                } catch (error) {
+                    console.log(`Skipping migration for ${sheetName}: sheet not found or inaccessible`);
+                    continue;
+                }
+
+                const nameToRow = new Map();
+                for (let i = 1; i < values.length; i++) {
+                    const rowName = normalizeStudentName(values[i]?.[0]);
+                    if (rowName) {
+                        nameToRow.set(rowName.toLowerCase(), i + 1);
+                    }
+                }
+
+                for (const student of students) {
+                    const fullName = normalizeStudentName(student.fullName);
+                    if (!fullName) {
+                        continue;
+                    }
+
+                    const key = fullName.toLowerCase();
+                    const groupVal = student.group || '';
+                    const pointsVal = String(normalizePointsValue(student.points));
+
+                    if (nameToRow.has(key)) {
+                        const rowNumber = nameToRow.get(key);
+                        await gapi.client.sheets.spreadsheets.values.update({
+                            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                            range: `${sheetName}!${groupCol}${rowNumber}:${pointsCol}${rowNumber}`,
+                            valueInputOption: 'RAW',
+                            resource: { values: [[groupVal, pointsVal]] }
+                        });
+                    } else {
+                        await gapi.client.sheets.spreadsheets.values.append({
+                            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                            range: `${sheetName}!A:Z`,
+                            valueInputOption: 'RAW',
+                            resource: {
+                                values: [[fullName, ...emptyDates, groupVal, pointsVal]]
+                            }
+                        });
+                    }
+                }
+            }
+
+            classSheetRewardsMigrationDone = true;
+            console.log('Class sheet rewards migration completed');
+            return true;
+        } catch (error) {
+            console.error('Class sheet rewards migration failed:', error);
+            return false;
+        } finally {
+            classSheetRewardsMigrationPromise = null;
+        }
+    })();
+
+    return classSheetRewardsMigrationPromise;
 }
