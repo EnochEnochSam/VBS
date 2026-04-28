@@ -190,14 +190,14 @@ async function submitRegistration(event) {
         return;
     }
 
-    const saved = await saveRegistrationToGoogleSheets(registrationData);
-    if (saved) {
+    const saveResult = await saveRegistrationToGoogleSheets(registrationData);
+    if (saveResult.success) {
         removePendingRegistration(registrationData);
         alert('✅ Registration submitted! Your admin will review and approve your request soon.');
         document.querySelector('#registration-section form').reset();
         backToHome();
     } else {
-        alert('✅ Registration saved locally. It will sync once Google is available.');
+        alert(`✅ Registration saved locally. Google sync failed: ${saveResult.error}`);
         document.querySelector('#registration-section form').reset();
         backToHome();
     }
@@ -354,8 +354,10 @@ async function rejectRegistration(rowIndex) {
 
 async function saveRegistrationToGoogleSheets(registrationData) {
     if (!googleInitialized || !googleAuthToken) {
-        alert('⚠️ Google not connected. Registration will NOT be saved. Please connect Google first.');
-        return false;
+        return {
+            success: false,
+            error: 'Google not connected. Please click Connect Google first.'
+        };
     }
 
     try {
@@ -377,10 +379,14 @@ async function saveRegistrationToGoogleSheets(registrationData) {
         });
 
         console.log('Registration saved to Google Sheets');
-        return true;
+        return { success: true, error: '' };
     } catch (error) {
         console.error('Failed to save registration:', error);
-        return false;
+        const googleError = error?.result?.error?.message || error?.message || 'Unknown Google Sheets error';
+        return {
+            success: false,
+            error: googleError
+        };
     }
 }
 
