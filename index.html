@@ -33,6 +33,7 @@
 
         <div style="display: flex; flex-direction: column; gap: 15px; max-width: 300px; margin: 0 auto;">
             <button onclick="showRegistration()" style="width: 100%; background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">✏️ New Registration</button>
+            <button onclick="showAttendanceLogin()" style="width: 100%; background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);">✅ Update Attendance</button>
             <button onclick="showDashboard()" style="width: 100%; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">📊 Dashboard</button>
             <button onclick="showAddPoints()" style="width: 100%; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">⭐ Add Points</button>
         </div>
@@ -84,13 +85,13 @@
     </div>
 
     <div id="user-login-section" style="display:none;">
-        <h1>👤 User Login</h1>
-        <p style="margin-bottom: 15px; color: #555;">Login with your connected Google account. Approved users do not need a password.</p>
+        <h1>✅ Update Attendance</h1>
+        <p style="margin-bottom: 15px; color: #555;">Login with your connected Google account to mark attendance for your approved class.</p>
         <div id="user-google-account" style="margin-bottom: 15px; padding: 10px; border-radius: 6px; background: #f8f9ff; color: #123d7a; border: 1px solid #d7deea;">
             Connect Google first to continue.
         </div>
 
-        <button onclick="userLogin()">✓ Login</button>
+        <button onclick="userLogin()">✓ Login & Update Attendance</button>
         <button onclick="backToHome()">← Back</button>
     </div>
 

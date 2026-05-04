@@ -1111,6 +1111,10 @@ function showUserLogin() {
     updateGoogleStatus();
 }
 
+function showAttendanceLogin() {
+    showUserLogin();
+}
+
 function showRegistration() {
     loginSection.style.display = 'none';
     registrationSection.style.display = 'block';
