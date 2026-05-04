@@ -51,6 +51,44 @@ function getGroupOptionsForStudent(student) {
     return GROUP_OPTIONS;
 }
 
+function getConnectedGoogleLabel() {
+    if (!currentGoogleUser) {
+        return 'No Google account connected';
+    }
+
+    const labelName = currentGoogleUser.name || currentGoogleUser.email || 'Connected user';
+    const labelEmail = currentGoogleUser.email ? ` (${currentGoogleUser.email})` : '';
+    return `${labelName}${labelEmail}`;
+}
+
+async function fetchConnectedGoogleUser() {
+    if (!googleInitialized || !googleAuthToken) {
+        return null;
+    }
+
+    try {
+        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: {
+                Authorization: `Bearer ${googleAuthToken}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to load Google profile (${response.status})`);
+        }
+
+        const profile = await response.json();
+        return {
+            email: (profile.email || '').trim().toLowerCase(),
+            name: (profile.name || profile.given_name || profile.email || '').trim(),
+            picture: profile.picture || ''
+        };
+    } catch (error) {
+        console.error('Failed to fetch connected Google user:', error);
+        return null;
+    }
+}
+
 async function fetchApprovedUsersFromSheets() {
     if (!googleInitialized || !googleAuthToken) {
         console.log('Google API not ready for approved users lookup');
@@ -902,7 +940,7 @@ function getDateRangeStatus() {
 
 // DOM elements - will be initialized after DOM loads
 let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, studentRewardsSection, studentRewardsList, notesTextarea, attendanceReportSection, registrationSection, dashboardSection;
-let homeGoogleStatus, homeActionButtons, homeGoogleAuthBtn;
+let homeGoogleStatus, homeActionButtons, homeGoogleAuthBtn, homeGoogleUser, registrationGoogleUser, userGoogleAccount;
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize DOM elements
@@ -922,6 +960,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize home page elements
     homeGoogleStatus = document.getElementById('home-google-status');
+    homeGoogleUser = document.getElementById('home-google-user');
+    registrationGoogleUser = document.getElementById('registration-google-user');
+    userGoogleAccount = document.getElementById('user-google-account');
     homeActionButtons = document.querySelector('#login-section > div:last-child'); // The buttons container
     homeGoogleAuthBtn = document.getElementById('home-google-auth-btn');
     
@@ -955,6 +996,7 @@ let currentClass = '';
 let currentRole = '';
 let isAdminMode = false;
 let currentUser = null;
+let currentGoogleUser = null;
 // Dashboard selected group filter (null = show all)
 let dashboardSelectedGroup = null;
 
@@ -971,11 +1013,13 @@ function showAdminLogin() {
 function showUserLogin() {
     loginSection.style.display = 'none';
     userLoginSection.style.display = 'block';
+    updateGoogleStatus();
 }
 
 function showRegistration() {
     loginSection.style.display = 'none';
     registrationSection.style.display = 'block';
+    updateGoogleStatus();
 }
 
 function updateClassRequirement() {
@@ -996,6 +1040,7 @@ function updateClassRequirement() {
 function showUserLogin() {
     loginSection.style.display = 'none';
     userLoginSection.style.display = 'block';
+    updateGoogleStatus();
 }
 
 function showDashboard() {
@@ -1026,11 +1071,16 @@ async function submitRegistration(event) {
     const fullName = document.getElementById('reg-full-name').value.trim();
     const role = document.getElementById('reg-role').value;
     const className = document.getElementById('reg-class').value;
-    const gmail = document.getElementById('reg-gmail').value.trim();
     const password = document.getElementById('reg-password').value;
     const confirmPassword = document.getElementById('reg-confirm-password').value;
+    const gmail = currentGoogleUser?.email || '';
 
-    if (!fullName || !role || !gmail || !password) {
+    if (!currentGoogleUser || !gmail) {
+        alert('❌ Please connect Google first.');
+        return;
+    }
+
+    if (!fullName || !role || !password) {
         alert('❌ Please fill in all required fields.');
         return;
     }
@@ -1051,6 +1101,7 @@ async function submitRegistration(event) {
         role,
         class: className,
         gmail,
+        googleName: currentGoogleUser?.name || '',
         password,
         status: 'pending',
         timestamp: new Date().toLocaleString()
@@ -1363,11 +1414,16 @@ async function adminLogin() {
 }
 
 async function userLogin() {
-    const gmail = document.getElementById('user-gmail').value.trim();
     const password = document.getElementById('user-password').value;
+    const gmail = currentGoogleUser?.email || '';
 
-    if (!gmail || !password) {
-        alert('❌ Please fill in Gmail and password.');
+    if (!currentGoogleUser || !gmail) {
+        alert('❌ Please connect Google first.');
+        return;
+    }
+
+    if (!password) {
+        alert('❌ Please fill in your password.');
         return;
     }
 
@@ -1390,7 +1446,6 @@ async function userLogin() {
                 isAdminMode = true;
                 showAdminTab('requests');
                 await loadRegistrationRequests();
-                document.getElementById('user-gmail').value = '';
                 document.getElementById('user-password').value = '';
                 return;
             }
@@ -1405,7 +1460,6 @@ async function userLogin() {
             updateClassTitle();
             setupRoleBasedAccess(currentRole, user.class);
             await loadClassData();
-            document.getElementById('user-gmail').value = '';
             document.getElementById('user-password').value = '';
         } else {
             alert('❌ Invalid credentials or user not approved.');
@@ -1457,21 +1511,49 @@ async function accessClass() {
 function updateGoogleStatus() {
     const statusEl = document.getElementById('google-status');
     const authBtn = document.getElementById('google-auth-btn');
+    const googleLabel = getConnectedGoogleLabel();
+
+    const applyConnectedState = () => {
+        if (homeGoogleUser) {
+            homeGoogleUser.style.display = 'block';
+            homeGoogleUser.textContent = `Connected as ${googleLabel}`;
+        }
+        if (registrationGoogleUser) {
+            registrationGoogleUser.textContent = `Connected Google account: ${googleLabel}`;
+        }
+        if (userGoogleAccount) {
+            userGoogleAccount.textContent = `Connected Google account: ${googleLabel}`;
+        }
+    };
+
+    const applyDisconnectedState = (message) => {
+        if (homeGoogleUser) {
+            homeGoogleUser.style.display = 'none';
+            homeGoogleUser.textContent = '';
+        }
+        if (registrationGoogleUser) {
+            registrationGoogleUser.textContent = 'Google account will be used automatically after connecting.';
+        }
+        if (userGoogleAccount) {
+            userGoogleAccount.textContent = message;
+        }
+    };
 
     if (googleAuthToken && googleInitialized) {
         if (statusEl) {
-            statusEl.textContent = '✅ Connected to Google - Data will auto-sync';
+            statusEl.textContent = `✅ Connected to Google: ${googleLabel}`;
             statusEl.style.color = '#2e7d32';
         }
         if (authBtn) authBtn.textContent = '🔓 Disconnect Google';
         if (homeGoogleStatus) {
-            homeGoogleStatus.textContent = '✅ Google connected. Login and registration enabled.';
+            homeGoogleStatus.textContent = `✅ Google connected. Login and registration enabled.`;
             homeGoogleStatus.style.backgroundColor = '#d4edda';
             homeGoogleStatus.style.color = '#155724';
             homeGoogleStatus.style.border = '1px solid #c3e6cb';
         }
         if (homeActionButtons) homeActionButtons.style.display = 'flex';
         if (homeGoogleAuthBtn) homeGoogleAuthBtn.textContent = '🔓 Disconnect Google';
+        applyConnectedState();
     } else if (googleInitialized) {
         if (statusEl) {
             statusEl.textContent = '📱 Not connected to Google (data saved locally)';
@@ -1486,6 +1568,7 @@ function updateGoogleStatus() {
         }
         if (homeActionButtons) homeActionButtons.style.display = 'flex';
         if (homeGoogleAuthBtn) homeGoogleAuthBtn.textContent = '🔗 Connect Google';
+        applyDisconnectedState('Connect Google first to continue.');
     } else {
         if (statusEl) {
             statusEl.textContent = '⚠️ Google API not configured';
@@ -1500,6 +1583,7 @@ function updateGoogleStatus() {
         }
         if (homeActionButtons) homeActionButtons.style.display = 'flex';
         if (homeGoogleAuthBtn) homeGoogleAuthBtn.textContent = '🔗 Connect Google';
+        applyDisconnectedState('Google API not configured. Check your setup.');
     }
 }
 
@@ -1905,7 +1989,13 @@ let googleAuthToken = null;
 let googleInitialized = false;
 let googleTokenClient = null;
 
-const SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'];
+const SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive',
+    'openid',
+    'email',
+    'profile'
+];
 
 async function initGoogleAPI() {
     return new Promise((resolve) => {
@@ -1930,13 +2020,14 @@ async function initGoogleAPI() {
                 googleTokenClient = google.accounts.oauth2.initTokenClient({
                     client_id: GOOGLE_CLIENT_ID,
                     scope: SCOPES.join(' '),
-                    callback: (tokenResponse) => {
+                    callback: async (tokenResponse) => {
                         if (tokenResponse.error) {
                             console.error('Token client callback error:', tokenResponse);
                             return;
                         }
                         googleAuthToken = tokenResponse.access_token;
                         gapi.client.setToken({access_token: googleAuthToken});
+                        currentGoogleUser = await fetchConnectedGoogleUser();
                         updateGoogleStatus();
                         syncPendingRegistrationsToGoogleSheets();
                     }
@@ -1965,6 +2056,7 @@ function handleAuthClick() {
     if (googleAuthToken) {
         google.accounts.oauth2.revoke(googleAuthToken, () => {
             googleAuthToken = null;
+            currentGoogleUser = null;
             gapi.client.setToken('');
             updateGoogleStatus();
             alert('Logged out from Google');
