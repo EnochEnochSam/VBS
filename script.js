@@ -580,6 +580,8 @@ function renderAttendanceGrid(grid, editable) {
     dateConfigs.forEach(config => {
         headRow.innerHTML += `<th style="background: #667eea; color: white; padding: 10px; min-width: 110px; white-space: nowrap;">${config.label}</th>`;
     });
+    headRow.innerHTML += '<th style="background: #667eea; color: white; padding: 10px; min-width: 120px; white-space: nowrap;">Group</th>';
+    headRow.innerHTML += '<th style="background: #667eea; color: white; padding: 10px; min-width: 80px; white-space: nowrap;">Points</th>';
     thead.appendChild(headRow);
     table.appendChild(thead);
 
@@ -649,6 +651,51 @@ function renderAttendanceGrid(grid, editable) {
             tr.appendChild(td);
         });
 
+        // Group column
+        const groupCell = document.createElement('td');
+        groupCell.style.cssText = 'padding: 8px; border-top: 1px solid #eee; text-align: center;';
+        if (editable && currentRole === 'director') {
+            const select = document.createElement('select');
+            select.dataset.student = row.name;
+            select.dataset.group = 'true';
+            select.style.cssText = 'width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;';
+            const options = ['','-- No Group --', ...getGroupOptionsForStudent(row)];
+            select.innerHTML = options.map(opt => opt === '' ? `<option value="">-</option>` : `<option value="${opt}">${opt}</option>`).join('');
+            select.value = row.group || '';
+            select.onchange = async () => {
+                const studentName = normalizeStudentName(select.dataset.student);
+                const grid = getCurrentAttendanceGrid();
+                const target = grid.find(r => (r.name || '').toLowerCase() === studentName.toLowerCase());
+                if (target) {
+                    target.group = select.value;
+                    saveAttendanceGrid(currentClass, grid);
+                    const rewards = getStudentRewardsCache(currentClass) || [];
+                    const idx = rewards.findIndex(s => (s.fullName || '').toLowerCase() === studentName.toLowerCase());
+                    if (idx >= 0) {
+                        rewards[idx].group = select.value;
+                    } else {
+                        rewards.push({ fullName: studentName, gmail: '', role: 'student', class: currentClass, group: select.value, points: 0 });
+                    }
+                    saveStudentRewardsCache(currentClass, rewards);
+                    if (googleInitialized && googleAuthToken) {
+                        await saveAttendanceToGoogleSheets(grid, currentClass);
+                    }
+                    refreshDashboardIfVisible();
+                }
+            };
+            groupCell.appendChild(select);
+        } else {
+            groupCell.textContent = row.group || '-';
+            groupCell.style.fontWeight = '600';
+        }
+        tr.appendChild(groupCell);
+
+        // Points column (read-only here)
+        const pointsCell = document.createElement('td');
+        pointsCell.style.cssText = 'padding: 8px; border-top: 1px solid #eee; text-align: center; font-weight: 700;';
+        pointsCell.textContent = String(normalizePointsValue(row.points || 0));
+        tr.appendChild(pointsCell);
+
         tbody.appendChild(tr);
     });
 
@@ -683,7 +730,24 @@ function getAttendanceGridFromUI() {
         dateConfigs.forEach(config => {
             attendance[config.key] = row.attendance?.[config.key] || '';
         });
-        return { name: row.name, gender: row.gender || '', attendance, group: row.group || '', points: normalizePointsValue(row.points) };
+
+        // Try to pick up any group select value from the UI
+        let groupVal = row.group || '';
+        try {
+            const sel = attendanceList.querySelector(`select[data-student][data-group][data-student="${CSS.escape(row.name)}"]`);
+            if (sel) groupVal = sel.value || groupVal;
+        } catch (e) {
+            // Fallback in environments without CSS.escape
+            const sel2 = attendanceList.querySelectorAll('select[data-student][data-group]');
+            for (const s of sel2) {
+                if ((s.dataset.student || '').toLowerCase() === (row.name || '').toLowerCase()) {
+                    groupVal = s.value || groupVal;
+                    break;
+                }
+            }
+        }
+
+        return { name: row.name, gender: row.gender || '', attendance, group: groupVal, points: normalizePointsValue(row.points) };
     });
 }
 
