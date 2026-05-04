@@ -1029,7 +1029,7 @@ function getDateRangeStatus() {
 
 // DOM elements - will be initialized after DOM loads
 let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, studentRewardsSection, studentRewardsList, notesTextarea, attendanceReportSection, registrationSection, dashboardSection, addPointsSection;
-let homeGoogleStatus, homeActionButtons, homeGoogleAuthBtn, homeGoogleUser, registrationGoogleUser, userGoogleAccount;
+let homeGoogleStatus, homeActionButtons, homeGoogleUser, registrationGoogleUser, userGoogleAccount, topRightConnectBtn, topRightLoginBtn, topRightLogoutBtn;
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize DOM elements
@@ -1054,7 +1054,9 @@ document.addEventListener('DOMContentLoaded', function() {
     registrationGoogleUser = document.getElementById('registration-google-user');
     userGoogleAccount = document.getElementById('user-google-account');
     homeActionButtons = document.querySelector('#login-section > div:last-child'); // The buttons container
-    homeGoogleAuthBtn = document.getElementById('home-google-auth-btn');
+    topRightConnectBtn = document.getElementById('top-right-connect-btn');
+    topRightLoginBtn = document.getElementById('top-right-login-btn');
+    topRightLogoutBtn = document.getElementById('top-right-logout-btn');
     
     // Populate class selectors
     populateAddPointsClassSelector();
@@ -1593,6 +1595,7 @@ function updateGoogleStatus() {
     const statusEl = document.getElementById('google-status');
     const authBtn = document.getElementById('google-auth-btn');
     const googleLabel = getConnectedGoogleLabel();
+    const isLoggedIn = !!currentUser || !!currentRole;
 
     const applyConnectedState = () => {
         if (homeGoogleUser) {
@@ -1637,7 +1640,9 @@ function updateGoogleStatus() {
             homeGoogleStatus.style.border = '1px solid #c3e6cb';
         }
         if (homeActionButtons) homeActionButtons.style.display = 'flex';
-        if (homeGoogleAuthBtn) homeGoogleAuthBtn.textContent = '🔓 Disconnect Google';
+        if (topRightConnectBtn) topRightConnectBtn.textContent = '🔓 Disconnect Google';
+        if (topRightLoginBtn) topRightLoginBtn.style.display = 'inline-flex';
+        if (topRightLogoutBtn) topRightLogoutBtn.style.display = isLoggedIn ? 'inline-flex' : 'none';
         applyConnectedState();
     } else if (googleInitialized) {
         if (statusEl) {
@@ -1652,7 +1657,9 @@ function updateGoogleStatus() {
             homeGoogleStatus.style.border = '1px solid #ffeaa7';
         }
         if (homeActionButtons) homeActionButtons.style.display = 'flex';
-        if (homeGoogleAuthBtn) homeGoogleAuthBtn.textContent = '🔗 Connect Google';
+        if (topRightConnectBtn) topRightConnectBtn.textContent = '🔗 Connect Google';
+        if (topRightLoginBtn) topRightLoginBtn.style.display = 'inline-flex';
+        if (topRightLogoutBtn) topRightLogoutBtn.style.display = isLoggedIn ? 'inline-flex' : 'none';
         applyDisconnectedState('Connect Google first to continue.');
     } else {
         if (statusEl) {
@@ -1667,7 +1674,9 @@ function updateGoogleStatus() {
             homeGoogleStatus.style.border = '1px solid #f5c6cb';
         }
         if (homeActionButtons) homeActionButtons.style.display = 'flex';
-        if (homeGoogleAuthBtn) homeGoogleAuthBtn.textContent = '🔗 Connect Google';
+        if (topRightConnectBtn) topRightConnectBtn.textContent = '🔗 Connect Google';
+        if (topRightLoginBtn) topRightLoginBtn.style.display = 'inline-flex';
+        if (topRightLogoutBtn) topRightLogoutBtn.style.display = isLoggedIn ? 'inline-flex' : 'none';
         applyDisconnectedState('Google API not configured. Check your setup.');
     }
 }
@@ -1887,6 +1896,20 @@ function logoutUser() {
     currentClass = '';
     currentUser = null;
     updateGoogleStatus();
+}
+
+function logoutCurrentSession() {
+    if (adminSection && adminSection.style.display === 'block' && currentRole === 'director') {
+        logoutAdmin();
+        return;
+    }
+
+    if (currentUser || currentRole) {
+        logoutUser();
+        return;
+    }
+
+    backToHome();
 }
 
 async function viewAttendanceReport() {

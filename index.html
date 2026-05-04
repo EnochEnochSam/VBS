@@ -15,6 +15,12 @@
     </script>
 </head>
 <body>
+    <div id="top-right-auth-bar">
+        <button onclick="connectGoogle()" id="top-right-connect-btn">🔗 Connect Google</button>
+        <button onclick="showUserLogin()" id="top-right-login-btn">👤 Login</button>
+        <button onclick="logoutCurrentSession()" id="top-right-logout-btn" style="display:none;">🚪 Logout</button>
+    </div>
+
     <div id="login-section">
         <h1>🙏 VBS Good Shepherd Church</h1>
         <h2>Welcome</h2>
@@ -26,9 +32,7 @@
         <div id="home-google-user" style="text-align: center; margin-bottom: 20px; padding: 10px; border-radius: 8px; font-weight: bold; background-color: #f8f9ff; color: #123d7a; border: 1px solid #d7deea; display:none;"></div>
 
         <div style="display: flex; flex-direction: column; gap: 15px; max-width: 300px; margin: 0 auto;">
-            <button onclick="connectGoogle()" id="home-google-auth-btn" style="width: 100%; background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);">🔗 Connect Google</button>
             <button onclick="showRegistration()" style="width: 100%; background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">✏️ New Registration</button>
-            <button onclick="showUserLogin()" style="width: 100%; background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);">👤 User Login</button>
             <button onclick="showDashboard()" style="width: 100%; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">📊 Dashboard</button>
             <button onclick="showAddPoints()" style="width: 100%; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">⭐ Add Points</button>
         </div>
