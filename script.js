@@ -1092,6 +1092,7 @@ let currentRole = '';
 let isAdminMode = false;
 let currentUser = null;
 let currentGoogleUser = null;
+let pendingPostLoginAction = 'home';
 // Dashboard selected group filter (null = show all)
 let dashboardSelectedGroup = null;
 
@@ -1106,13 +1107,29 @@ function showAdminLogin() {
 }
 
 function showUserLogin() {
+    showUserLoginForAction('home');
+}
+
+function showUserLoginForAction(action = 'home') {
+    pendingPostLoginAction = action === 'attendance' ? 'attendance' : 'home';
     loginSection.style.display = 'none';
     userLoginSection.style.display = 'block';
+    const loginTitle = document.getElementById('user-login-title');
+    const loginDescription = document.getElementById('user-login-description');
+    if (loginTitle && loginDescription) {
+        if (pendingPostLoginAction === 'attendance') {
+            loginTitle.textContent = '✅ Update Attendance';
+            loginDescription.textContent = 'Login with your connected Google account to mark attendance for your approved class.';
+        } else {
+            loginTitle.textContent = '👤 User Login';
+            loginDescription.textContent = 'Login with your connected Google account.';
+        }
+    }
     updateGoogleStatus();
 }
 
 function showAttendanceLogin() {
-    showUserLogin();
+    showUserLoginForAction('attendance');
 }
 
 function showRegistration() {
@@ -1136,12 +1153,6 @@ function updateClassRequirement() {
     }
 }
 
-function showUserLogin() {
-    loginSection.style.display = 'none';
-    userLoginSection.style.display = 'block';
-    updateGoogleStatus();
-}
-
 function showDashboard() {
     loginSection.style.display = 'none';
     dashboardSection.style.display = 'block';
@@ -1149,6 +1160,7 @@ function showDashboard() {
 }
 
 function backToHome() {
+    pendingPostLoginAction = 'home';
     registrationSection.style.display = 'none';
     userLoginSection.style.display = 'none';
     dashboardSection.style.display = 'none';
@@ -1527,26 +1539,29 @@ async function userLogin() {
             currentUser = user;
             currentRole = user.role;
 
-            if (currentRole === 'director') {
-                userLoginSection.style.display = 'none';
-                adminSection.style.display = 'block';
-                isAdminMode = true;
-                showAdminTab('requests');
-                await loadRegistrationRequests();
-                updateGoogleStatus();
-                return;
-            }
-
             let chosenClass = user.class || '';
             if (!chosenClass) {
                 chosenClass = currentRole === 'teacher' ? 'teachers' : CLASS_LIST[0];
             }
             currentClass = chosenClass;
             userLoginSection.style.display = 'none';
-            classSection.style.display = 'block';
-            updateClassTitle();
-            setupRoleBasedAccess(currentRole, user.class);
-            await loadClassData();
+
+            if (pendingPostLoginAction === 'attendance') {
+                if (currentRole === 'director') {
+                    adminSection.style.display = 'block';
+                    isAdminMode = true;
+                    showAdminTab('requests');
+                    await loadRegistrationRequests();
+                } else {
+                    classSection.style.display = 'block';
+                    updateClassTitle();
+                    setupRoleBasedAccess(currentRole, user.class);
+                    await loadClassData();
+                }
+            } else {
+                backToHome();
+            }
+
             updateGoogleStatus();
         } else {
             alert('❌ Invalid credentials or user not approved.');

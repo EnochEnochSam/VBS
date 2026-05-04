@@ -15,15 +15,18 @@
     </script>
 </head>
 <body>
-    <div id="top-right-auth-bar">
-        <button onclick="connectGoogle()" id="top-right-connect-btn">🔗 Connect Google</button>
-        <button onclick="showUserLogin()" id="top-right-login-btn">👤 Login</button>
-        <button onclick="logoutCurrentSession()" id="top-right-logout-btn" style="display:none;">🚪 Logout</button>
-    </div>
-
     <div id="login-section">
-        <h1>🙏 VBS Good Shepherd Church</h1>
-        <h2>Welcome</h2>
+        <div class="home-header">
+            <div>
+                <h1>🙏 VBS Good Shepherd Church</h1>
+                <h2>Welcome</h2>
+            </div>
+            <div id="top-right-auth-bar">
+                <button onclick="connectGoogle()" id="top-right-connect-btn">🔗 Connect Google</button>
+                <button onclick="showUserLogin()" id="top-right-login-btn">👤 Login</button>
+                <button onclick="logoutCurrentSession()" id="top-right-logout-btn" style="display:none;">🚪 Logout</button>
+            </div>
+        </div>
         <p style="text-align: center; color: #666; margin-bottom: 30px;">Choose an option below</p>
         
         <div id="home-google-status" style="text-align: center; margin-bottom: 20px; padding: 10px; border-radius: 8px; font-weight: bold; background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7;">
@@ -85,13 +88,13 @@
     </div>
 
     <div id="user-login-section" style="display:none;">
-        <h1>✅ Update Attendance</h1>
-        <p style="margin-bottom: 15px; color: #555;">Login with your connected Google account to mark attendance for your approved class.</p>
+        <h1 id="user-login-title">👤 User Login</h1>
+        <p id="user-login-description" style="margin-bottom: 15px; color: #555;">Login with your connected Google account.</p>
         <div id="user-google-account" style="margin-bottom: 15px; padding: 10px; border-radius: 6px; background: #f8f9ff; color: #123d7a; border: 1px solid #d7deea;">
             Connect Google first to continue.
         </div>
 
-        <button onclick="userLogin()">✓ Login & Update Attendance</button>
+        <button onclick="userLogin()">✓ Login</button>
         <button onclick="backToHome()">← Back</button>
     </div>
 
