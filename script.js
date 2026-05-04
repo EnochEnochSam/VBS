@@ -279,11 +279,15 @@ async function updateApprovedUserRewards(gmail, updates) {
             }
         }
 
+        const existingRow = rowIndex > -1 ? (values[rowIndex - 1] || []) : [];
+        const existingGroup = existingRow[dateConfigs.length + 1] || '';
+        const existingPoints = normalizePointsValue(existingRow[dateConfigs.length + 2]);
+        const groupVal = updates.group !== undefined ? updates.group : existingGroup;
+        const pointsVal = updates.points !== undefined ? normalizePointsValue(updates.points) : existingPoints;
+
         // If not found, append a new row for the student
         if (rowIndex === -1) {
             const emptyDates = dateConfigs.map(() => '');
-            const groupVal = updates.group !== undefined ? updates.group : '';
-            const pointsVal = updates.points !== undefined ? normalizePointsValue(updates.points) : 0;
             await gapi.client.sheets.spreadsheets.values.append({
                 spreadsheetId: GOOGLE_SPREADSHEET_ID,
                 range: `${sheetName}!A:Z`,
@@ -311,9 +315,6 @@ async function updateApprovedUserRewards(gmail, updates) {
         const pointsColIndex = groupColIndex + 1;
         const groupCol = columnLetter(groupColIndex);
         const pointsCol = columnLetter(pointsColIndex);
-
-        const groupVal = updates.group !== undefined ? updates.group : '';
-        const pointsVal = updates.points !== undefined ? normalizePointsValue(updates.points) : 0;
 
         await gapi.client.sheets.spreadsheets.values.update({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
