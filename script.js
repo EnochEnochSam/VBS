@@ -6,7 +6,9 @@ const ADMIN_PASS = 'VBSGoodShepherdChurch';
 const START_DATE = new Date(2026, 4, 6); // May 6, 2026
 const END_DATE = new Date(2026, 4, 16); // May 16, 2026
 let classDataLoadToken = 0;
-const GROUP_OPTIONS = ['Girls 1', 'Girls 2', 'Girls 3', 'Girls 4', 'Boys 1', 'Boys 2', 'Boys 3', 'Boys 4'];
+const GIRLS_GROUP_OPTIONS = ['Abharam', 'Moses', 'Joseph', 'David'];
+const BOYS_GROUP_OPTIONS = ['Deborah', 'Elezebath', 'Esther', 'Mary'];
+const GROUP_OPTIONS = [...GIRLS_GROUP_OPTIONS, ...BOYS_GROUP_OPTIONS];
 let classSheetRewardsMigrationDone = false;
 let classSheetRewardsMigrationPromise = null;
 
@@ -29,6 +31,24 @@ function normalizePointsValue(value) {
 
 function buildStudentRewardKey(student) {
     return (student.gmail || student.fullName || '').toString().trim().toLowerCase();
+}
+
+function normalizeGenderValue(value) {
+    const normalized = (value || '').toString().trim().toLowerCase();
+    if (normalized === 'male' || normalized === 'boy' || normalized === 'boys') return 'Male';
+    if (normalized === 'female' || normalized === 'girl' || normalized === 'girls') return 'Female';
+    return '';
+}
+
+function getGroupOptionsForStudent(student) {
+    const gender = normalizeGenderValue(student?.gender);
+    if (gender === 'Female') {
+        return GIRLS_GROUP_OPTIONS;
+    }
+    if (gender === 'Male') {
+        return BOYS_GROUP_OPTIONS;
+    }
+    return GROUP_OPTIONS;
 }
 
 async function fetchApprovedUsersFromSheets() {
@@ -347,6 +367,20 @@ function normalizeStudentName(name) {
     return (name || '').toString().trim();
 }
 
+function getAttendanceSheetColumnLayout(headerRow = []) {
+    const normalizedHeader = (headerRow || []).map(value => normalizeStudentName(value).toLowerCase());
+    const hasGenderColumn = normalizedHeader[1] === 'gender';
+    const dateStartIndex = hasGenderColumn ? 2 : 1;
+    const dateCount = getAttendanceDateConfigs().length;
+
+    return {
+        hasGenderColumn,
+        dateStartIndex,
+        groupIndex: dateStartIndex + dateCount,
+        pointsIndex: dateStartIndex + dateCount + 1
+    };
+}
+
 function getAttendanceDateKeyMap() {
     const map = new Map();
     getAttendanceDateConfigs().forEach(config => map.set(config.key, config.label));
@@ -362,7 +396,7 @@ function getDefaultAttendanceGrid(className = currentClass) {
         dateConfigs.forEach(config => {
             attendance[config.key] = '';
         });
-        return { name: studentName, attendance };
+        return { name: studentName, gender: '', attendance };
     });
 }
 
@@ -386,7 +420,7 @@ function mergeAttendanceGrid(grid, className = currentClass) {
             dateConfigs.forEach(config => {
                 attendance[config.key] = row.attendance?.[config.key] || '';
             });
-            return { name: row.name, attendance };
+            return { name: row.name, gender: row.gender || '', attendance, group: row.group || '', points: normalizePointsValue(row.points) };
         });
     }
 
@@ -397,7 +431,7 @@ function mergeAttendanceGrid(grid, className = currentClass) {
         dateConfigs.forEach(config => {
             attendance[config.key] = existingRow?.attendance?.[config.key] || '';
         });
-        merged.push({ name: studentName, attendance });
+        merged.push({ name: studentName, gender: existingRow?.gender || '', attendance, group: existingRow?.group || '', points: normalizePointsValue(existingRow?.points) });
     });
 
     return merged;
@@ -426,7 +460,7 @@ function getCurrentAttendanceGrid(className = currentClass) {
                 dateConfigs.forEach(config => {
                     attendance[config.key] = '';
                 });
-                roster.set(studentName.toLowerCase(), { name: studentName, attendance });
+                roster.set(studentName.toLowerCase(), { name: studentName, gender: '', attendance });
             }
             const row = roster.get(studentName.toLowerCase());
             const matchedDate = dateConfigs.find(config => config.label === dateKey || config.key === dateKey || new Date(config.key).toLocaleDateString() === dateKey);
@@ -445,9 +479,10 @@ function getCurrentAttendanceGrid(className = currentClass) {
 function attendanceGridToSheetValues(grid) {
     const dateConfigs = getAttendanceDateConfigs();
     return [
-        ['Student Name', ...dateConfigs.map(config => config.label), 'Group', 'Points'],
+        ['Student Name', 'Gender', ...dateConfigs.map(config => config.label), 'Group', 'Points'],
         ...grid.map(row => [
             row.name,
+            row.gender || '',
             ...dateConfigs.map(config => row.attendance?.[config.key] || ''),
             row.group || '',
             String(normalizePointsValue(row.points))
@@ -478,7 +513,7 @@ function sheetValuesToAttendanceGrid(values) {
                 dateConfigs.forEach(config => {
                     attendance[config.key] = '';
                 });
-                gridMap.set(studentName.toLowerCase(), { name: studentName, attendance });
+                gridMap.set(studentName.toLowerCase(), { name: studentName, gender: '', attendance });
             }
 
             const matchedDate = dateConfigs.find(config => config.label === dateLabel || config.key === dateLabel || new Date(config.key).toLocaleDateString() === dateLabel);
@@ -489,11 +524,15 @@ function sheetValuesToAttendanceGrid(values) {
         return Array.from(gridMap.values());
     }
 
-    const headerMap = firstRow.slice(1).map(value => normalizeStudentName(value));
-    const matchingDates = headerMap.map(header => {
-        const matched = dateConfigs.find(config => config.label === header || config.key === header);
-        return matched || null;
-    }).filter(Boolean);
+    const layout = getAttendanceSheetColumnLayout(firstRow);
+    const matchingDates = [];
+    for (let i = 0; i < dateConfigs.length; i++) {
+        const headerValue = normalizeStudentName(firstRow[layout.dateStartIndex + i]);
+        const matched = dateConfigs.find(config => config.label === headerValue || config.key === headerValue);
+        if (matched) {
+            matchingDates.push({ config: matched, columnIndex: layout.dateStartIndex + i });
+        }
+    }
 
     const rows = [];
     for (let i = 1; i < values.length; i++) {
@@ -506,16 +545,14 @@ function sheetValuesToAttendanceGrid(values) {
             attendance[config.key] = '';
         });
 
-        matchingDates.forEach((config, index) => {
-            attendance[config.key] = row[index + 1] || '';
+        matchingDates.forEach(({ config, columnIndex }) => {
+            attendance[config.key] = row[columnIndex] || '';
         });
 
-        // Detect optional trailing columns for Group and Points
-        const expectedDateCount = matchingDates.length;
-        const group = row[1 + expectedDateCount] || '';
-        const points = normalizePointsValue(row[1 + expectedDateCount + 1]);
+        const group = row[layout.groupIndex] || '';
+        const points = normalizePointsValue(row[layout.pointsIndex]);
 
-        rows.push({ name: studentName, attendance, group: group || '', points });
+        rows.push({ name: studentName, gender: layout.hasGenderColumn ? (row[1] || '') : '', attendance, group: group || '', points });
     }
 
     return rows;
@@ -539,6 +576,7 @@ function renderAttendanceGrid(grid, editable) {
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
     headRow.innerHTML = '<th style="position: sticky; left: 0; z-index: 1; background: #667eea; color: white; padding: 10px; text-align: left; min-width: 180px;">Student Name</th>';
+    headRow.innerHTML += '<th style="background: #667eea; color: white; padding: 10px; min-width: 140px; white-space: nowrap;">Gender</th>';
     dateConfigs.forEach(config => {
         headRow.innerHTML += `<th style="background: #667eea; color: white; padding: 10px; min-width: 110px; white-space: nowrap;">${config.label}</th>`;
     });
@@ -552,6 +590,29 @@ function renderAttendanceGrid(grid, editable) {
         nameCell.textContent = row.name;
         nameCell.style.cssText = 'position: sticky; left: 0; background: #f8f9ff; font-weight: 600; padding: 10px; border-top: 1px solid #eee;';
         tr.appendChild(nameCell);
+
+        const genderCell = document.createElement('td');
+        genderCell.style.cssText = 'padding: 8px; border-top: 1px solid #eee; text-align: center;';
+
+        if (editable) {
+            const select = document.createElement('select');
+            select.dataset.student = row.name;
+            select.dataset.gender = 'true';
+            select.style.cssText = 'width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;';
+            select.innerHTML = `
+                    <option value="">-</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                `;
+            select.value = row.gender || '';
+            genderCell.appendChild(select);
+        } else {
+            genderCell.textContent = row.gender || '-';
+            genderCell.style.fontWeight = '600';
+        }
+
+        tr.appendChild(genderCell);
 
         dateConfigs.forEach(config => {
             const td = document.createElement('td');
@@ -600,6 +661,14 @@ function getAttendanceGridFromUI() {
     const dateConfigs = getAttendanceDateConfigs();
     const gridByName = new Map(grid.map(row => [row.name.toLowerCase(), row]));
 
+    attendanceList.querySelectorAll('select[data-student][data-gender]').forEach(select => {
+        const studentName = normalizeStudentName(select.dataset.student);
+        const row = gridByName.get(studentName.toLowerCase());
+        if (row) {
+            row.gender = select.value;
+        }
+    });
+
     attendanceList.querySelectorAll('select[data-student][data-date]').forEach(select => {
         const studentName = normalizeStudentName(select.dataset.student);
         const dateKey = select.dataset.date;
@@ -614,7 +683,7 @@ function getAttendanceGridFromUI() {
         dateConfigs.forEach(config => {
             attendance[config.key] = row.attendance?.[config.key] || '';
         });
-        return { name: row.name, attendance };
+        return { name: row.name, gender: row.gender || '', attendance, group: row.group || '', points: normalizePointsValue(row.points) };
     });
 }
 
@@ -661,8 +730,12 @@ function renderStudentRewardsTable(students, options = {}) {
         if (canAssignGroup) {
             const select = document.createElement('select');
             select.style.cssText = 'width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;';
-            select.innerHTML = ['<option value="">-- No Group --</option>', ...GROUP_OPTIONS.map(group => `<option value="${group}">${group}</option>`)].join('');
+            const groupOptions = getGroupOptionsForStudent(student);
+            select.innerHTML = ['<option value="">-- No Group --</option>', ...groupOptions.map(group => `<option value="${group}">${group}</option>`)].join('');
             select.value = student.group || '';
+            if (select.value && !groupOptions.includes(select.value)) {
+                select.value = '';
+            }
             select.onchange = async () => {
                 student.group = select.value;
                 saveStudentRewardsCache(currentClass, students);
@@ -818,6 +891,8 @@ let currentClass = '';
 let currentRole = '';
 let isAdminMode = false;
 let currentUser = null;
+// Dashboard selected group filter (null = show all)
+let dashboardSelectedGroup = null;
 
 function showAdminLogin() {
     console.log('showAdminLogin called');
@@ -1398,7 +1473,7 @@ async function loadClassData() {
     }
     
     const editable = !['teacher_view', 'student'].includes(currentRole);
-    const canAssignGroup = currentRole === 'director' || currentRole === 'admin';
+    const canAssignGroup = currentRole === 'director';
     const canAddPoints = currentRole === 'director' || currentRole === 'admin' || currentRole === 'teacher';
     let attendanceGrid = getCurrentAttendanceGrid(activeClass);
     renderAttendanceGrid(attendanceGrid, editable);
@@ -1470,6 +1545,7 @@ async function addStudentFromInput() {
     dateConfigs.forEach(config => {
         newRow.attendance[config.key] = '';
     });
+    newRow.gender = '';
 
     const updatedGrid = [...grid, newRow];
     saveAttendanceGrid(currentClass, updatedGrid);
@@ -1483,6 +1559,7 @@ async function addStudentFromInput() {
             role: 'student',
             class: currentClass,
             approvedDate: '',
+            gender: '',
             group: '',
             points: 0
         });
@@ -1946,14 +2023,14 @@ async function loadDashboardData() {
 
                 const header = values[0] || [];
                 const dateConfigs = getAttendanceDateConfigs();
-                const expectedDateCount = dateConfigs.length;
+                const layout = getAttendanceSheetColumnLayout(header);
 
                 for (let r = 1; r < values.length; r++) {
                     const row = values[r] || [];
                     const fullName = (row[0] || '').toString().trim();
                     if (!fullName) continue;
-                    const group = row[1 + expectedDateCount] || '';
-                    const points = normalizePointsValue(row[1 + expectedDateCount + 1]);
+                    const group = row[layout.groupIndex] || '';
+                    const points = normalizePointsValue(row[layout.pointsIndex]);
                     studentLeaderboard.push({ fullName, className: className.charAt(0).toUpperCase() + className.slice(1), group, points });
                     if (!groupTotals.has(group)) groupTotals.set(group, 0);
                     groupTotals.set(group, groupTotals.get(group) + points);
@@ -1999,27 +2076,31 @@ async function loadDashboardData() {
         document.getElementById('today-attendance-count').textContent = todayAttendance;
 
         const topStudentsList = document.getElementById('top-students-list');
-        if (topStudentsList) {
-            const top10 = studentLeaderboard
-                .sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName))
-                .slice(0, 10);
+        const renderTopStudents = (filterGroup) => {
+            if (!topStudentsList) return;
+            const listSource = filterGroup ? studentLeaderboard.filter(s => (s.group || '') === filterGroup) : studentLeaderboard;
+            const top10 = listSource.sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName)).slice(0, 10);
 
             if (!top10.length) {
                 topStudentsList.innerHTML = '<p style="color: #999;">No student points available</p>';
             } else {
                 topStudentsList.innerHTML = top10.map((student, index) => `
-                    <div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee;">
-                        <div>
-                            <strong>${index + 1}. ${student.fullName}</strong><br>
-                            <span style="color: #666; font-size: 0.9em;">${student.className}${student.group ? ` • ${student.group}` : ''}</span>
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
+                        <div style="min-width:0">
+                            <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</div>
+                            <div style="color:#666;font-size:0.85em;margin-top:4px;">${student.className}${student.group ? ` • ${student.group}` : ''}</div>
                         </div>
-                        <div style="font-weight: 700; color: #667eea;">${student.points} pts</div>
+                        <div style="font-weight:800;color:#0f172a;margin-left:12px;">${student.points} pts</div>
                     </div>
                 `).join('');
             }
-        }
+        };
+
+        // Initial render (may be filtered by previously selected group)
+        renderTopStudents(dashboardSelectedGroup);
 
         const groupPointsList = document.getElementById('group-points-list');
+        const groupPointsCards = document.getElementById('group-points-cards');
         if (groupPointsList) {
             const orderedGroups = [...GROUP_OPTIONS, ...Array.from(groupTotals.keys()).filter(group => !GROUP_OPTIONS.includes(group))];
             groupPointsList.innerHTML = orderedGroups.map(group => `
@@ -2028,6 +2109,39 @@ async function loadDashboardData() {
                     <span style="font-weight: 700; color: #2e7d32;">${groupTotals.get(group) || 0} pts</span>
                 </div>
             `).join('');
+        }
+
+        if (groupPointsCards) {
+            // Ensure all configured groups are shown as cards (preserve order)
+            groupPointsCards.innerHTML = `<div class="group-cards-grid">` + GROUP_OPTIONS.map(group => `
+                <div class="group-card" data-group="${(group || '').replace(/"/g, '&quot;')}">
+                    <div class="group-name">${group || 'Unassigned'}</div>
+                    <div class="group-points">${groupTotals.get(group) || 0} pts</div>
+                </div>
+            `).join('') + `</div>`;
+
+            // Attach click handlers to filter top students by group
+            const cards = groupPointsCards.querySelectorAll('.group-card');
+            cards.forEach(card => {
+                const groupName = card.dataset.group || '';
+                if ((dashboardSelectedGroup || '') === groupName) {
+                    card.classList.add('active');
+                } else {
+                    card.classList.remove('active');
+                }
+                card.addEventListener('click', (e) => {
+                    const clickedGroup = card.dataset.group || '';
+                    if (dashboardSelectedGroup === clickedGroup) {
+                        dashboardSelectedGroup = null;
+                    } else {
+                        dashboardSelectedGroup = clickedGroup;
+                    }
+                    // Update visuals
+                    cards.forEach(c => c.classList.toggle('active', (c.dataset.group || '') === (dashboardSelectedGroup || '')));
+                    // Re-render top students with the selected filter
+                    renderTopStudents(dashboardSelectedGroup);
+                });
+            });
         }
 
     } catch (error) {
@@ -2064,7 +2178,7 @@ async function ensureClassSheetRewardsMigrated() {
 
             const dateConfigs = getAttendanceDateConfigs();
             const emptyDates = dateConfigs.map(() => '');
-            const groupColIndex = 1 + dateConfigs.length + 1; // A + dates + Group
+            const groupColIndex = 2 + dateConfigs.length; // A + Gender + dates + Group
             const pointsColIndex = groupColIndex + 1;
             const groupCol = columnLetter(groupColIndex);
             const pointsCol = columnLetter(pointsColIndex);
@@ -2121,7 +2235,7 @@ async function ensureClassSheetRewardsMigrated() {
                             range: `${sheetName}!A:Z`,
                             valueInputOption: 'RAW',
                             resource: {
-                                values: [[fullName, ...emptyDates, groupVal, pointsVal]]
+                                values: [[fullName, '', ...emptyDates, groupVal, pointsVal]]
                             }
                         });
                     }
