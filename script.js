@@ -2225,9 +2225,11 @@ async function loadDashboardData() {
         document.getElementById('total-teachers-count').textContent = 'Connect Google first';
         document.getElementById('total-directors-count').textContent = 'Connect Google first';
         document.getElementById('today-attendance-count').textContent = 'Connect Google first';
-        const topStudentsList = document.getElementById('top-students-list');
+        const topGirlsList = document.getElementById('top-girls-students-list');
+        const topBoysList = document.getElementById('top-boys-students-list');
         const groupPointsList = document.getElementById('group-points-list');
-        if (topStudentsList) topStudentsList.innerHTML = '<p style="color: #999;">Connect Google first</p>';
+        if (topGirlsList) topGirlsList.innerHTML = '<p style="color: #999;">Connect Google first</p>';
+        if (topBoysList) topBoysList.innerHTML = '<p style="color: #999;">Connect Google first</p>';
         if (groupPointsList) groupPointsList.innerHTML = '<p style="color: #999;">Connect Google first</p>';
         return;
     }
@@ -2275,9 +2277,10 @@ async function loadDashboardData() {
                     const row = values[r] || [];
                     const fullName = (row[0] || '').toString().trim();
                     if (!fullName) continue;
+                    const gender = layout.hasGenderColumn ? normalizeGenderValue(row[1]) : '';
                     const group = row[layout.groupIndex] || '';
                     const points = normalizePointsValue(row[layout.pointsIndex]);
-                    studentLeaderboard.push({ fullName, className: className.charAt(0).toUpperCase() + className.slice(1), group, points });
+                    studentLeaderboard.push({ fullName, className: className.charAt(0).toUpperCase() + className.slice(1), gender, group, points });
                     if (!groupTotals.has(group)) groupTotals.set(group, 0);
                     groupTotals.set(group, groupTotals.get(group) + points);
                 }
@@ -2321,16 +2324,36 @@ async function loadDashboardData() {
 
         document.getElementById('today-attendance-count').textContent = todayAttendance;
 
-        const topStudentsList = document.getElementById('top-students-list');
-        const renderTopStudents = (filterGroup) => {
-            if (!topStudentsList) return;
-            const listSource = filterGroup ? studentLeaderboard.filter(s => (s.group || '') === filterGroup) : studentLeaderboard;
-            const top10 = listSource.sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName)).slice(0, 10);
-
-            if (!top10.length) {
-                topStudentsList.innerHTML = '<p style="color: #999;">No student points available</p>';
+        const topGirlsList = document.getElementById('top-girls-students-list');
+        const topBoysList = document.getElementById('top-boys-students-list');
+        
+        const renderGenderTopStudents = () => {
+            // Filter girls
+            const girlsLeaderboard = studentLeaderboard.filter(s => s.gender === 'Female');
+            const top10Girls = girlsLeaderboard.sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName)).slice(0, 10);
+            
+            if (!top10Girls.length) {
+                topGirlsList.innerHTML = '<p style="color: #999;">No girls student points available</p>';
             } else {
-                topStudentsList.innerHTML = top10.map((student, index) => `
+                topGirlsList.innerHTML = top10Girls.map((student, index) => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
+                        <div style="min-width:0">
+                            <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</div>
+                            <div style="color:#666;font-size:0.85em;margin-top:4px;">${student.className}${student.group ? ` • ${student.group}` : ''}</div>
+                        </div>
+                        <div style="font-weight:800;color:#0f172a;margin-left:12px;">${student.points} pts</div>
+                    </div>
+                `).join('');
+            }
+            
+            // Filter boys
+            const boysLeaderboard = studentLeaderboard.filter(s => s.gender === 'Male');
+            const top10Boys = boysLeaderboard.sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName)).slice(0, 10);
+            
+            if (!top10Boys.length) {
+                topBoysList.innerHTML = '<p style="color: #999;">No boys student points available</p>';
+            } else {
+                topBoysList.innerHTML = top10Boys.map((student, index) => `
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
                         <div style="min-width:0">
                             <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</div>
@@ -2341,9 +2364,8 @@ async function loadDashboardData() {
                 `).join('');
             }
         };
-
-        // Initial render (may be filtered by previously selected group)
-        renderTopStudents(dashboardSelectedGroup);
+        
+        renderGenderTopStudents();
 
         const groupPointsList = document.getElementById('group-points-list');
         const groupPointsCards = document.getElementById('group-points-cards');
@@ -2384,8 +2406,8 @@ async function loadDashboardData() {
                     }
                     // Update visuals
                     cards.forEach(c => c.classList.toggle('active', (c.dataset.group || '') === (dashboardSelectedGroup || '')));
-                    // Re-render top students with the selected filter
-                    renderTopStudents(dashboardSelectedGroup);
+                    // Re-render top students with gender separation
+                    renderGenderTopStudents();
                 });
             });
         }
@@ -2396,9 +2418,11 @@ async function loadDashboardData() {
         document.getElementById('total-teachers-count').textContent = 'Error';
         document.getElementById('total-directors-count').textContent = 'Error';
         document.getElementById('today-attendance-count').textContent = 'Error';
-        const topStudentsList = document.getElementById('top-students-list');
+        const topGirlsList = document.getElementById('top-girls-students-list');
+        const topBoysList = document.getElementById('top-boys-students-list');
         const groupPointsList = document.getElementById('group-points-list');
-        if (topStudentsList) topStudentsList.innerHTML = '<p style="color: red;">Error loading top students</p>';
+        if (topGirlsList) topGirlsList.innerHTML = '<p style="color: red;">Error loading girls student data</p>';
+        if (topBoysList) topBoysList.innerHTML = '<p style="color: red;">Error loading boys student data</p>';
         if (groupPointsList) groupPointsList.innerHTML = '<p style="color: red;">Error loading group points</p>';
     }
 }

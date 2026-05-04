@@ -369,8 +369,7 @@ label {
     box-shadow: 0 8px 18px rgba(18, 61, 122, 0.20);
 }
 
-#dashboard-section #top-students-list,
-#dashboard-section #group-points-list {
+#dashboard-section #top-girls-students-list,\n#dashboard-section #top-boys-students-list,\n#dashboard-section #group-points-list {
     background: #f8fbff;
     border: 1px solid #d7deea;
     border-radius: 8px;
