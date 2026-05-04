@@ -692,7 +692,12 @@ function renderAttendanceGrid(grid, editable) {
         // Group column
         const groupCell = document.createElement('td');
         groupCell.style.cssText = 'padding: 8px; border-top: 1px solid #eee; text-align: center;';
-        if (editable && currentRole === 'director') {
+        
+        // Group assignment is a one-time activity by director
+        const groupIsAssigned = row.group && row.group.trim() !== '';
+        
+        if (editable && currentRole === 'director' && !groupIsAssigned) {
+            // Only show select if group is not yet assigned
             const select = document.createElement('select');
             select.dataset.student = row.name;
             select.dataset.group = 'true';
@@ -723,8 +728,14 @@ function renderAttendanceGrid(grid, editable) {
             };
             groupCell.appendChild(select);
         } else {
+            // Show as read-only text (either already assigned or non-director viewing)
             groupCell.textContent = row.group || '-';
             groupCell.style.fontWeight = '600';
+            if (groupIsAssigned) {
+                groupCell.style.backgroundColor = '#e8f5e9';
+                groupCell.style.color = '#2e7d32';
+                groupCell.title = 'Group assignment is locked (one-time only)';
+            }
         }
         tr.appendChild(groupCell);
 
@@ -829,7 +840,12 @@ function renderStudentRewardsTable(students, options = {}) {
 
         const groupCell = document.createElement('td');
         groupCell.style.cssText = 'padding: 10px; border-top: 1px solid #eee;';
-        if (canAssignGroup) {
+        
+        // Group assignment is a one-time activity by director
+        const groupIsAssigned = student.group && student.group.trim() !== '';
+        
+        if (canAssignGroup && !groupIsAssigned) {
+            // Only show select if group is not yet assigned
             const select = document.createElement('select');
             select.style.cssText = 'width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd;';
             const groupOptions = getGroupOptionsForStudent(student);
@@ -854,7 +870,14 @@ function renderStudentRewardsTable(students, options = {}) {
             };
             groupCell.appendChild(select);
         } else {
+            // Show as read-only text (either already assigned or not authorized)
             groupCell.textContent = student.group || '-';
+            if (groupIsAssigned) {
+                groupCell.style.backgroundColor = '#e8f5e9';
+                groupCell.style.color = '#2e7d32';
+                groupCell.style.fontWeight = '600';
+                groupCell.title = 'Group assignment is locked (one-time only)';
+            }
         }
         row.appendChild(groupCell);
 
@@ -1071,8 +1094,6 @@ async function submitRegistration(event) {
     const fullName = document.getElementById('reg-full-name').value.trim();
     const role = document.getElementById('reg-role').value;
     const className = document.getElementById('reg-class').value;
-    const password = document.getElementById('reg-password').value;
-    const confirmPassword = document.getElementById('reg-confirm-password').value;
     const gmail = currentGoogleUser?.email || '';
 
     if (!currentGoogleUser || !gmail) {
@@ -1080,7 +1101,7 @@ async function submitRegistration(event) {
         return;
     }
 
-    if (!fullName || !role || !password) {
+    if (!fullName || !role) {
         alert('❌ Please fill in all required fields.');
         return;
     }
@@ -1091,18 +1112,13 @@ async function submitRegistration(event) {
         return;
     }
 
-    if (password !== confirmPassword) {
-        alert('❌ Passwords do not match!');
-        return;
-    }
-
     const registrationData = {
         fullName,
         role,
         class: className,
         gmail,
         googleName: currentGoogleUser?.name || '',
-        password,
+        password: '',
         status: 'pending',
         timestamp: new Date().toLocaleString()
     };
@@ -1414,16 +1430,10 @@ async function adminLogin() {
 }
 
 async function userLogin() {
-    const password = document.getElementById('user-password').value;
     const gmail = currentGoogleUser?.email || '';
 
     if (!currentGoogleUser || !gmail) {
         alert('❌ Please connect Google first.');
-        return;
-    }
-
-    if (!password) {
-        alert('❌ Please fill in your password.');
         return;
     }
 
@@ -1432,11 +1442,11 @@ async function userLogin() {
         return;
     }
 
-    // Check approved users from Google Sheets based on Gmail and password
+    // Check approved users from Google Sheets based on Gmail only
 
     try {
         const user = await fetchApprovedUserFromSheets(gmail);
-        if (user && user.password === password) {
+        if (user) {
             currentUser = user;
             currentRole = user.role;
 
@@ -1446,7 +1456,7 @@ async function userLogin() {
                 isAdminMode = true;
                 showAdminTab('requests');
                 await loadRegistrationRequests();
-                document.getElementById('user-password').value = '';
+                updateGoogleStatus();
                 return;
             }
 
@@ -1460,7 +1470,7 @@ async function userLogin() {
             updateClassTitle();
             setupRoleBasedAccess(currentRole, user.class);
             await loadClassData();
-            document.getElementById('user-password').value = '';
+            updateGoogleStatus();
         } else {
             alert('❌ Invalid credentials or user not approved.');
         }
@@ -1516,13 +1526,17 @@ function updateGoogleStatus() {
     const applyConnectedState = () => {
         if (homeGoogleUser) {
             homeGoogleUser.style.display = 'block';
-            homeGoogleUser.textContent = `Connected as ${googleLabel}`;
+            homeGoogleUser.textContent = currentUser?.fullName
+                ? `Logged in as ${currentUser.fullName} (${googleLabel})`
+                : `Connected as ${googleLabel}`;
         }
         if (registrationGoogleUser) {
             registrationGoogleUser.textContent = `Connected Google account: ${googleLabel}`;
         }
         if (userGoogleAccount) {
-            userGoogleAccount.textContent = `Connected Google account: ${googleLabel}`;
+            userGoogleAccount.textContent = currentUser?.fullName
+                ? `Logged in as ${currentUser.fullName} (${googleLabel})`
+                : `Connected Google account: ${googleLabel}`;
         }
     };
 
@@ -1673,7 +1687,9 @@ async function addStudentFromInput() {
         return;
     }
     const input = document.getElementById('student-name-input');
+    const genderSelect = document.getElementById('student-gender-select');
     const name = input.value.trim();
+    const gender = genderSelect?.value || '';
     
     if (!name) {
         alert('❌ Please enter a student name.');
@@ -1693,7 +1709,7 @@ async function addStudentFromInput() {
     dateConfigs.forEach(config => {
         newRow.attendance[config.key] = '';
     });
-    newRow.gender = '';
+    newRow.gender = gender;
 
     const updatedGrid = [...grid, newRow];
     saveAttendanceGrid(currentClass, updatedGrid);
@@ -1707,7 +1723,7 @@ async function addStudentFromInput() {
             role: 'student',
             class: currentClass,
             approvedDate: '',
-            gender: '',
+            gender: gender,
             group: '',
             points: 0
         });
@@ -1719,6 +1735,7 @@ async function addStudentFromInput() {
     }
     
     input.value = '';
+    genderSelect.value = '';
     await loadClassData();
     alert(`✅ ${name} added successfully!`);
 }
@@ -1786,6 +1803,7 @@ function logoutAdmin() {
     currentRole = '';
     currentUser = null;
     document.getElementById('class-select').value = 'beginners';
+    updateGoogleStatus();
 }
 
 function logoutUser() {
@@ -1795,6 +1813,7 @@ function logoutUser() {
     isAdminMode = false;
     currentClass = '';
     currentUser = null;
+    updateGoogleStatus();
 }
 
 async function viewAttendanceReport() {

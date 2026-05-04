@@ -63,12 +63,6 @@
                 Google account will be used automatically after connecting.
             </div>
 
-            <label for="reg-password">Password:</label>
-            <input type="password" id="reg-password" placeholder="Create a password" required>
-
-            <label for="reg-confirm-password">Confirm Password:</label>
-            <input type="password" id="reg-confirm-password" placeholder="Confirm your password" required>
-
             <button type="submit" style="background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">📝 Submit Registration</button>
             <button type="button" onclick="backToHome()" style="background: #999;">← Back</button>
         </form>
@@ -86,13 +80,10 @@
 
     <div id="user-login-section" style="display:none;">
         <h1>👤 User Login</h1>
-        <p style="margin-bottom: 15px; color: #555;">Login with your connected Google account and password. Class access is granted based on your approved account.</p>
+        <p style="margin-bottom: 15px; color: #555;">Login with your connected Google account. Approved users do not need a password.</p>
         <div id="user-google-account" style="margin-bottom: 15px; padding: 10px; border-radius: 6px; background: #f8f9ff; color: #123d7a; border: 1px solid #d7deea;">
             Connect Google first to continue.
         </div>
-
-        <label for="user-password">Password:</label>
-        <input type="password" id="user-password" placeholder="Enter your password" required>
 
         <button onclick="userLogin()">✓ Login</button>
         <button onclick="backToHome()">← Back</button>
@@ -208,8 +199,14 @@
                     <option value="teachers">Teachers</option>
                 </select>
             </div>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
                 <input type="text" id="student-name-input" placeholder="Enter student name..." style="flex: 1; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1em;">
+                <select id="student-gender-select" style="padding: 12px; border-radius: 6px; border: 1px solid #ddd; min-width: 120px; font-size: 1em;">
+                    <option value="">Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                </select>
                 <button onclick="addStudentFromInput()" style="padding: 12px 24px; white-space: nowrap;">➕ Add Student</button>
             </div>
         </div>

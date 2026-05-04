@@ -49,6 +49,7 @@ This sheet stores approved users who can now log in.
 
 **Data Format:**
 - Same as Registrations sheet but only for approved users
+- Password is optional and can be left blank for the Google-only login flow
 - Automatically populated by the admin when they click "Approve" on a registration request
 
 **Example Row:**
@@ -89,7 +90,7 @@ For class-based passwords (legacy system).
 - **To Approve:** Click ✅ **Approve** button
   - Updates the status to `approved` in `Registrations` sheet
   - Adds the user to `ApprovedUsers` sheet
-  - User can now login with their Gmail ID and password
+  - User can now login with their connected Google account
 
 - **To Reject:** Click ❌ **Reject** button
   - Updates the status to `rejected` in `Registrations` sheet
@@ -97,8 +98,8 @@ For class-based passwords (legacy system).
 
 ### Step 3: User Login
 Once approved, users can login using:
-- **Gmail ID** and **Password** from the ApprovedUsers sheet
-- Their **Role** and **Class** determine their access level
+- **Gmail ID** from the connected Google account
+- Their approved status, role, and class determine their access level
 
 ---
 
@@ -110,7 +111,6 @@ Once approved, users can login using:
    - Full Name
    - Role (teacher, volunteer, student, director)
    - Gmail ID
-   - Password (confirm)
    - Class (optional for volunteers, required for teachers)
 
 ### Step 2: Request Submitted
@@ -178,7 +178,7 @@ Make sure your Google Sheets has the following permissions:
 
 ### User can't login after approval
 - Verify user is in `ApprovedUsers` sheet
-- Ensure Gmail ID and password match exactly (case-sensitive)
+- Ensure Gmail ID matches the connected Google account exactly (case-insensitive)
 - Check that user's role matches the login method
 
 ---
@@ -196,6 +196,7 @@ When you first enable this system, you have two ways users can login:
 - Requires admin approval
 - Role-based access control
 - Gmail ID required
+- No password is required after approval
 - Need to set up `Registrations` and `ApprovedUsers` sheets
 
 Both systems can work simultaneously!
