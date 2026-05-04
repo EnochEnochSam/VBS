@@ -24,6 +24,30 @@ function saveStudentRewardsCache(className, students) {
     localStorage.setItem(getStudentRewardsStorageKey(className), JSON.stringify(students));
 }
 
+function getPointsLogStorageKey(className = currentClass) {
+    return `${className}-points-log`;
+}
+
+function getPointsLog(className = currentClass) {
+    return JSON.parse(localStorage.getItem(getPointsLogStorageKey(className)) || '[]');
+}
+
+function savePointsLog(className, log) {
+    localStorage.setItem(getPointsLogStorageKey(className), JSON.stringify(log));
+}
+
+function addPointsLogEntry(className, studentName, pointsDelta, updatedBy) {
+    const log = getPointsLog(className);
+    log.push({
+        studentName,
+        pointsDelta,
+        updatedBy,
+        timestamp: new Date().toLocaleString(),
+        timestampISO: new Date().toISOString()
+    });
+    savePointsLog(className, log);
+}
+
 function normalizePointsValue(value) {
     const parsed = Number.parseInt(value, 10);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -908,17 +932,20 @@ function renderStudentRewardsTable(students, options = {}) {
                 }
                 student.points = normalizePointsValue(student.points) + delta;
                 saveStudentRewardsCache(currentClass, students);
+                // Log the points update with who made it
+                const updatedBy = currentUser?.fullName || 'Unknown';
+                addPointsLogEntry(currentClass, student.fullName, delta, updatedBy);
                 if (!student.gmail || !googleInitialized || !googleAuthToken) {
                     pointsValue.textContent = String(student.points);
                     refreshDashboardIfVisible();
-                    alert(`✅ ${student.fullName} awarded ${delta} points locally.`);
+                    alert(`✅ ${student.fullName} awarded ${delta} points by ${updatedBy}.`);
                     return;
                 }
                 const saved = await updateApprovedUserRewards(student.gmail, { group: student.group, points: student.points });
                 if (saved) {
                     pointsValue.textContent = String(student.points);
                     refreshDashboardIfVisible();
-                    alert(`✅ ${student.fullName} awarded ${delta} points.`);
+                    alert(`✅ ${student.fullName} awarded ${delta} points by ${updatedBy}.`);
                 } else {
                     alert('❌ Could not save points. Please connect Google and try again.');
                 }
@@ -936,6 +963,44 @@ function renderStudentRewardsTable(students, options = {}) {
 
     table.appendChild(tbody);
     studentRewardsList.appendChild(table);
+}
+
+function renderPointsLog(className = currentClass) {
+    const pointsLogList = document.getElementById('points-log-list');
+    if (!pointsLogList) return;
+
+    const log = getPointsLog(className);
+    if (!log || log.length === 0) {
+        pointsLogList.innerHTML = '<p style="text-align: center; color: #999; padding: 12px;">No points updates yet.</p>';
+        return;
+    }
+
+    // Sort by timestamp descending (newest first)
+    const sorted = [...log].sort((a, b) => new Date(b.timestampISO) - new Date(a.timestampISO));
+
+    pointsLogList.innerHTML = sorted.map((entry, index) => `
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #eee; font-size: 0.95em;">
+            <div style="flex: 1;">
+                <div style="font-weight: 600; color: #333;">${entry.studentName}</div>
+                <div style="color: #666; font-size: 0.9em; margin-top: 4px;">
+                    <strong>+${entry.pointsDelta}</strong> points by <strong>${entry.updatedBy}</strong>
+                </div>
+                <div style="color: #999; font-size: 0.85em; margin-top: 2px;">${entry.timestamp}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function togglePointsLogView() {
+    const pointsLogList = document.getElementById('points-log-list');
+    if (!pointsLogList) return;
+    
+    if (pointsLogList.style.display === 'none') {
+        renderPointsLog(currentClass);
+        pointsLogList.style.display = 'block';
+    } else {
+        pointsLogList.style.display = 'none';
+    }
 }
 
 console.log('Script loaded successfully');
@@ -1642,6 +1707,7 @@ async function loadClassData() {
 
     const cachedRewards = getStudentRewardsCache(activeClass);
     renderStudentRewardsTable(cachedRewards, { canAssignGroup, canAddPoints });
+    renderPointsLog(activeClass);
 
     if (googleInitialized && googleAuthToken) {
         try {
@@ -1663,6 +1729,7 @@ async function loadClassData() {
                 return;
             }
             renderStudentRewardsTable(remoteRewards, { canAssignGroup, canAddPoints });
+            renderPointsLog(activeClass);
         } catch (error) {
             console.error('Failed to load Google attendance grid:', error);
         }
@@ -1952,6 +2019,10 @@ function setupRoleBasedAccess(userRole, userClass) {
     const canManageRewards = userRole === 'director' || userRole === 'admin' || userRole === 'teacher';
     if (rewardsSection) {
         rewardsSection.style.display = canManageRewards ? 'block' : 'none';
+    }
+    const pointsLogSection = document.getElementById('points-log-section');
+    if (pointsLogSection) {
+        pointsLogSection.style.display = canManageRewards ? 'block' : 'none';
     }
 
     if (userRole === 'teacher') {
