@@ -30,6 +30,7 @@
             <button onclick="showRegistration()" style="width: 100%; background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">✏️ New Registration</button>
             <button onclick="showUserLogin()" style="width: 100%; background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);">👤 User Login</button>
             <button onclick="showDashboard()" style="width: 100%; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">📊 Dashboard</button>
+            <button onclick="showAddPoints()" style="width: 100%; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">⭐ Add Points</button>
         </div>
     </div>
 
@@ -87,6 +88,35 @@
 
         <button onclick="userLogin()">✓ Login</button>
         <button onclick="backToHome()">← Back</button>
+    </div>
+
+    <div id="add-points-section" style="display:none;">
+        <h1>⭐ Add Points to Student</h1>
+        <p style="margin-bottom: 15px; color: #555;">Teachers and Directors can quickly add points to any student.</p>
+        
+        <div id="add-points-google-account" style="margin-bottom: 15px; padding: 10px; border-radius: 6px; background: #f8f9ff; color: #123d7a; border: 1px solid #d7deea;">
+            Connect Google first to continue.
+        </div>
+
+        <form onsubmit="submitAddPoints(event)" style="background: #f8f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid #e74c3c;">
+            <label for="add-points-class" style="display: block; margin-bottom: 8px; font-weight: 600;">Select Class:</label>
+            <select id="add-points-class" onchange="loadStudentsForAddPoints()" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 15px;" required>
+                <option value="">-- Select Class --</option>
+            </select>
+
+            <label for="add-points-student" style="display: block; margin-bottom: 8px; font-weight: 600;">Select Student:</label>
+            <select id="add-points-student" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 15px;" required>
+                <option value="">-- Select Student --</option>
+            </select>
+
+            <label for="add-points-amount" style="display: block; margin-bottom: 8px; font-weight: 600;">Points to Add:</label>
+            <input type="number" id="add-points-amount" placeholder="Enter points (e.g., 5)" min="1" max="100" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 15px; box-sizing: border-box;" required>
+
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" style="flex: 1; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">✓ Add Points</button>
+                <button type="button" onclick="backToHome()" style="flex: 1; background: #999;">← Back</button>
+            </div>
+        </form>
     </div>
 
     <div id="dashboard-section" style="display:none;">

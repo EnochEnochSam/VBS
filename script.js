@@ -1027,7 +1027,7 @@ function getDateRangeStatus() {
 }
 
 // DOM elements - will be initialized after DOM loads
-let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, studentRewardsSection, studentRewardsList, notesTextarea, attendanceReportSection, registrationSection, dashboardSection;
+let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, studentRewardsSection, studentRewardsList, notesTextarea, attendanceReportSection, registrationSection, dashboardSection, addPointsSection;
 let homeGoogleStatus, homeActionButtons, homeGoogleAuthBtn, homeGoogleUser, registrationGoogleUser, userGoogleAccount;
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1039,6 +1039,7 @@ document.addEventListener('DOMContentLoaded', function() {
     dashboardSection = document.getElementById('dashboard-section');
     adminSection = document.getElementById('admin-section');
     classSection = document.getElementById('class-section');
+    addPointsSection = document.getElementById('add-points-section');
     classTitle = document.getElementById('class-title');
     attendanceList = document.getElementById('attendance-list');
     studentRewardsSection = document.getElementById('student-rewards-section');
@@ -1053,6 +1054,9 @@ document.addEventListener('DOMContentLoaded', function() {
     userGoogleAccount = document.getElementById('user-google-account');
     homeActionButtons = document.querySelector('#login-section > div:last-child'); // The buttons container
     homeGoogleAuthBtn = document.getElementById('home-google-auth-btn');
+    
+    // Populate class selectors
+    populateAddPointsClassSelector();
     
     console.log('DOM elements initialized');
     
@@ -1145,6 +1149,7 @@ function backToHome() {
     adminSection.style.display = 'none';
     classSection.style.display = 'none';
     attendanceReportSection.style.display = 'none';
+    addPointsSection.style.display = 'none';
     loginSection.style.display = 'block';
 }
 
@@ -2524,4 +2529,173 @@ async function ensureClassSheetRewardsMigrated() {
     })();
 
     return classSheetRewardsMigrationPromise;
+}
+
+// ==================== ADD POINTS SECTION ====================
+
+function showAddPoints() {
+    // Check if user is logged in and is a teacher or director
+    if (!currentGoogleUser || !currentGoogleUser.email) {
+        alert('❌ Please connect Google first.');
+        return;
+    }
+
+    if (!googleInitialized || !googleAuthToken) {
+        alert('❌ Google not connected. Please connect Google first.');
+        return;
+    }
+
+    loginSection.style.display = 'none';
+    addPointsSection.style.display = 'block';
+    updateAddPointsUI();
+}
+
+function populateAddPointsClassSelector() {
+    const selector = document.getElementById('add-points-class');
+    if (!selector) return;
+    
+    // Clear existing options except the first placeholder
+    while (selector.options.length > 1) {
+        selector.remove(1);
+    }
+    
+    // Add class options
+    CLASS_LIST.forEach(className => {
+        const option = document.createElement('option');
+        option.value = className;
+        option.textContent = className.charAt(0).toUpperCase() + className.slice(1);
+        selector.appendChild(option);
+    });
+}
+
+async function loadStudentsForAddPoints() {
+    const classSelector = document.getElementById('add-points-class');
+    const studentSelector = document.getElementById('add-points-student');
+    const selectedClass = classSelector.value;
+    
+    if (!selectedClass) {
+        studentSelector.innerHTML = '<option value="">-- Select Student --</option>';
+        return;
+    }
+    
+    try {
+        const students = await getClassStudentRewards(selectedClass);
+        
+        // Clear student selector
+        studentSelector.innerHTML = '<option value="">-- Select Student --</option>';
+        
+        if (students && students.length > 0) {
+            students.forEach(student => {
+                const option = document.createElement('option');
+                option.value = student.fullName;
+                option.textContent = `${student.fullName} (${student.points || 0} pts)`;
+                studentSelector.appendChild(option);
+            });
+        } else {
+            studentSelector.innerHTML = '<option value="">-- No students found --</option>';
+        }
+    } catch (error) {
+        console.error('Failed to load students:', error);
+        studentSelector.innerHTML = '<option value="">-- Error loading students --</option>';
+    }
+}
+
+async function submitAddPoints(event) {
+    event.preventDefault();
+    
+    const selectedClass = document.getElementById('add-points-class').value;
+    const selectedStudent = document.getElementById('add-points-student').value;
+    const pointsAmount = normalizePointsValue(document.getElementById('add-points-amount').value);
+    
+    if (!selectedClass || !selectedStudent || pointsAmount <= 0) {
+        alert('❌ Please fill in all fields correctly.');
+        return;
+    }
+    
+    // Verify user is authorized (teacher or director)
+    const userEmail = currentGoogleUser?.email || '';
+    try {
+        const user = await fetchApprovedUserFromSheets(userEmail);
+        const userRole = (user?.role || '').toLowerCase();
+        
+        if (userRole !== 'director' && userRole !== 'teacher') {
+            alert('❌ Only teachers and directors can add points.');
+            return;
+        }
+        
+        // Get current student data
+        const students = await getClassStudentRewards(selectedClass);
+        const student = students.find(s => s.fullName === selectedStudent);
+        
+        if (!student) {
+            alert('❌ Student not found.');
+            return;
+        }
+        
+        // Calculate new points
+        const oldPoints = normalizePointsValue(student.points || 0);
+        const newPoints = oldPoints + pointsAmount;
+        
+        // Update student points
+        student.points = newPoints;
+        
+        // Save to localStorage
+        saveStudentRewardsCache(selectedClass, students);
+        
+        // Log the points addition
+        const updatedBy = currentUser?.fullName || currentGoogleUser?.name || 'Unknown';
+        addPointsLogEntry(selectedClass, selectedStudent, pointsAmount, updatedBy);
+        
+        // Update Google Sheets if available
+        if (googleInitialized && googleAuthToken) {
+            try {
+                await updateApprovedUserRewards(userEmail, {
+                    points: newPoints,
+                    class: selectedClass
+                });
+                
+                // Also try to update the class sheet
+                const sheetName = getAttendanceSheetName(selectedClass);
+                const remoteGrid = await fetchAttendanceFromGoogleSheets(selectedClass);
+                if (remoteGrid) {
+                    const rowIndex = remoteGrid.findIndex(row => row.name && row.name.toLowerCase() === selectedStudent.toLowerCase());
+                    if (rowIndex !== -1) {
+                        const updatedGrid = [...remoteGrid];
+                        updatedGrid[rowIndex].points = newPoints;
+                        await saveAttendanceToGoogleSheets(selectedClass, updatedGrid);
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to update Google Sheets:', err);
+            }
+        }
+        
+        // Reset form
+        document.getElementById('add-points-class').value = '';
+        document.getElementById('add-points-student').value = '';
+        document.getElementById('add-points-amount').value = '';
+        document.getElementById('add-points-student').innerHTML = '<option value="">-- Select Student --</option>';
+        
+        alert(`✓ Added ${pointsAmount} points to ${selectedStudent}!\nNew total: ${newPoints} points`);
+        
+        // Refresh dashboard if visible
+        refreshDashboardIfVisible();
+        
+    } catch (error) {
+        console.error('Failed to add points:', error);
+        alert('❌ Error adding points. Please try again.');
+    }
+}
+
+function updateAddPointsUI() {
+    const addPointsGoogleAccount = document.getElementById('add-points-google-account');
+    if (addPointsGoogleAccount) {
+        const googleLabel = getConnectedGoogleLabel();
+        if (currentGoogleUser && currentGoogleUser.email) {
+            addPointsGoogleAccount.textContent = `Logged in as ${googleLabel}`;
+            addPointsGoogleAccount.style.backgroundColor = '#e8f5e9';
+            addPointsGoogleAccount.style.color = '#2e7d32';
+            addPointsGoogleAccount.style.borderColor = '#81c784';
+        }
+    }
 }
