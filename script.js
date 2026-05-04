@@ -2681,6 +2681,11 @@ async function submitAddPoints(event) {
         
         // Refresh dashboard if visible
         refreshDashboardIfVisible();
+
+        // Keep the dashboard data cache fresh even if the dashboard is currently hidden
+        if (googleInitialized && googleAuthToken) {
+            await loadDashboardData();
+        }
         
     } catch (error) {
         console.error('Failed to add points:', error);
