@@ -211,6 +211,10 @@
 
     <div id="class-section" style="display:none;">
         <h1>📚 <span id="class-title"></span></h1>
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <button onclick="backToHome()" style="flex: 1; background: #999;">← Back to Home</button>
+            <button onclick="(async () => await viewAttendanceReport())()" style="flex: 1; background: #667eea;">📊 View Report</button>
+        </div>
         <div id="class-switcher" style="display:none; margin-bottom: 15px;">
             <label for="class-view-select" style="display: block; margin-bottom: 8px; font-weight: 600;">Select class to view:</label>
             <select id="class-view-select" onchange="switchClassView()" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
@@ -310,6 +314,7 @@
         </div>
         <button onclick="(async () => await downloadAttendanceCSV())()">📥 Download as CSV</button>
         <button onclick="backToClass()">← Back to Class</button>
+        <button onclick="backToHome()" style="background: #999;">← Back to Home</button>
     </div>
 
     <script src="script.js?v=2"></script>
