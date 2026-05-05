@@ -2502,6 +2502,45 @@ async function loadDashboardData() {
                 console.log(`Sheet ${className} not found or empty while aggregating points`);
             }
         }
+            // Aggregate student points and groups by scanning class sheets (points now stored per-class)
+            for (const className of CLASS_LIST) {
+                try {
+                    // Use getClassStudentRewards to properly load students with points from sheets and cache
+                    const students = await getClassStudentRewards(className);
+                
+                    if (!students || students.length === 0) continue;
+                
+                    for (const student of students) {
+                        const fullName = student.fullName || '';
+                        if (!fullName) continue;
+                    
+                        // Try to get gender from the sheet
+                        let gender = '';
+                        try {
+                            const sheetResponse = await gapi.client.sheets.spreadsheets.values.get({
+                                spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                                range: `${className.charAt(0).toUpperCase() + className.slice(1)}!A:Z`
+                            });
+                            const values = sheetResponse.result.values || [];
+                            const grid = sheetValuesToAttendanceGrid(values);
+                            const gridEntry = grid.find(g => g.name && g.name.toLowerCase() === fullName.toLowerCase());
+                            gender = gridEntry?.gender || '';
+                        } catch (err) {
+                            // Continue without gender if sheet read fails
+                        }
+                    
+                        const group = student.group || '';
+                        const points = normalizePointsValue(student.points || 0);
+                    
+                        studentLeaderboard.push({ fullName, className: className.charAt(0).toUpperCase() + className.slice(1), gender, group, points });
+                        if (!groupTotals.has(group)) groupTotals.set(group, 0);
+                        groupTotals.set(group, groupTotals.get(group) + points);
+                    }
+                } catch (error) {
+                    // Sheet might not exist, continue
+                    console.log(`Failed to load students from ${className} class:`, error);
+                }
+            }
 
         document.getElementById('total-students-count').textContent = students;
         document.getElementById('total-teachers-count').textContent = teachers;
