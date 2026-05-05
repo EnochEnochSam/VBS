@@ -1276,6 +1276,9 @@ function backToHome() {
     attendanceReportSection.style.display = 'none';
     addPointsSection.style.display = 'none';
     loginSection.style.display = 'block';
+    
+    // Update UI button visibility when returning home
+    updateGoogleStatus();
 }
 
 function connectGoogle() {
@@ -1611,6 +1614,10 @@ async function adminLogin() {
     const username = document.getElementById('admin-username').value.trim().toLowerCase();
     const password = document.getElementById('admin-password').value.trim().toLowerCase();
     if (username === ADMIN_USER.toLowerCase() && password === ADMIN_PASS.toLowerCase()) {
+        // Set user session for logout tracking
+        currentUser = { fullName: 'Admin', role: 'admin' };
+        currentRole = 'admin';
+        
         adminLoginSection.style.display = 'none';
         adminSection.style.display = 'block';
         isAdminMode = true;
@@ -1626,6 +1633,9 @@ async function adminLogin() {
         
         document.getElementById('admin-username').value = '';
         document.getElementById('admin-password').value = '';
+        
+        // Update UI to show logout button
+        updateGoogleStatus();
     } else {
         alert('❌ Invalid admin credentials. Please try again.');
     }
@@ -1824,6 +1834,33 @@ function updateGoogleStatus() {
         if (topRightLogoutBtn) topRightLogoutBtn.style.display = showLogoutOnly ? 'inline-flex' : 'none';
         applyDisconnectedState('Google API not configured. Check your setup.');
     }
+}
+
+function logoutCurrentSession() {
+    // Clear user session data
+    currentUser = null;
+    currentRole = null;
+    currentClass = null;
+    isAdminMode = false;
+    
+    // Hide all sections except login
+    if (registrationSection) registrationSection.style.display = 'none';
+    if (userLoginSection) userLoginSection.style.display = 'none';
+    if (dashboardSection) dashboardSection.style.display = 'none';
+    if (adminLoginSection) adminLoginSection.style.display = 'none';
+    if (adminSection) adminSection.style.display = 'none';
+    if (classSection) classSection.style.display = 'none';
+    if (attendanceReportSection) attendanceReportSection.style.display = 'none';
+    if (addPointsSection) addPointsSection.style.display = 'none';
+    
+    // Show login section
+    if (loginSection) loginSection.style.display = 'block';
+    
+    // Update UI to reflect logout
+    updateGoogleStatus();
+    
+    // Show confirmation message
+    alert('✅ Logged out successfully!');
 }
 
 async function loadClassData() {
