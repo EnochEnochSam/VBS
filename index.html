@@ -26,6 +26,14 @@
                 <button onclick="showUserLogin()" id="top-right-login-btn">👤 Login</button>
                 <button onclick="logoutCurrentSession()" id="top-right-logout-btn" style="display:none;">🚪 Logout</button>
             </div>
+            <div class="layout-selector-container" style="display:flex; align-items:center; gap:8px;">
+                <label for="layout-selector" style="font-size:0.85rem; color:#5b6b7a; margin-right:4px;">Layout</label>
+                <select id="layout-selector" onchange="onLayoutSelectorChange(event)" aria-label="Select layout" style="padding:6px 8px; border-radius:6px; border:1px solid #d7deea; font-size:0.9rem;">
+                    <option value="phone">📱 Phone</option>
+                    <option value="tablet">📟 Tablet</option>
+                    <option value="laptop">💻 Laptop</option>
+                </select>
+            </div>
         </div>
         <p class="home-subtitle">Choose an option below</p>
         

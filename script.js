@@ -1074,7 +1074,83 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         console.log('Google API not loaded yet; waiting until window load.');
     }
+
+    // Initialize layout selector from stored preference
+    try {
+        initLayoutFromStorage();
+        const sel = document.getElementById('layout-selector');
+        if (sel) sel.addEventListener('change', (e) => onLayoutSelectorChange(e));
+    } catch (e) {
+        console.warn('Layout selector init failed', e);
+    }
 });
+
+// Layout selector helpers
+let uiLayoutManualOverride = false; // Track if user manually selected a layout
+
+function detectLayoutFromViewport() {
+    const width = window.innerWidth;
+    if (width < 640) {
+        return 'phone';
+    } else if (width < 1200) {
+        return 'tablet';
+    } else {
+        return 'laptop';
+    }
+}
+
+function applyLayoutSelection(layout) {
+    document.documentElement.classList.remove('layout-phone', 'layout-tablet', 'layout-laptop');
+    const cls = layout === 'phone' ? 'layout-phone' : (layout === 'tablet' ? 'layout-tablet' : 'layout-laptop');
+    document.documentElement.classList.add(cls);
+}
+
+function setLayoutSelection(layout, isManual = false) {
+    if (!layout) layout = 'laptop';
+    if (!['phone', 'tablet', 'laptop'].includes(layout)) layout = 'laptop';
+    
+    if (isManual) {
+        // User manually selected; save and override auto-detect
+        uiLayoutManualOverride = true;
+        localStorage.setItem('ui-layout-selection', layout);
+        localStorage.setItem('ui-layout-manual-override', 'true');
+    }
+    
+    applyLayoutSelection(layout);
+    const sel = document.getElementById('layout-selector');
+    if (sel) sel.value = layout;
+}
+
+function autoApplyLayoutFromViewport() {
+    if (uiLayoutManualOverride) {
+        // If user manually selected, don't auto-override
+        return;
+    }
+    const detectedLayout = detectLayoutFromViewport();
+    applyLayoutSelection(detectedLayout);
+    const sel = document.getElementById('layout-selector');
+    if (sel) sel.value = detectedLayout;
+}
+
+function initLayoutFromStorage() {
+    const isManualOverride = localStorage.getItem('ui-layout-manual-override') === 'true';
+    const stored = localStorage.getItem('ui-layout-selection');
+    
+    if (isManualOverride && stored) {
+        // User had manually selected before; use that
+        uiLayoutManualOverride = true;
+        setLayoutSelection(stored, false);
+    } else {
+        // No manual override; auto-detect based on viewport
+        uiLayoutManualOverride = false;
+        autoApplyLayoutFromViewport();
+    }
+}
+
+function onLayoutSelectorChange(e) {
+    const value = (e && e.target && e.target.value) ? e.target.value : (e || 'laptop');
+    setLayoutSelection(value, true); // Mark as manual selection
+}
 
 window.addEventListener('load', function() {
     if (typeof gapi !== 'undefined' && !googleInitialized) {
@@ -1084,6 +1160,11 @@ window.addEventListener('load', function() {
     } else {
         updateGoogleStatus();
     }
+});
+
+// Auto-apply layout on window resize (if not manually overridden)
+window.addEventListener('resize', function() {
+    autoApplyLayoutFromViewport();
 });
 
 const CLASS_LIST = ['beginners', 'primary', 'junior', 'intermediate', 'senior', 'teachers'];
