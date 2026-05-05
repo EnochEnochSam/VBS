@@ -128,12 +128,12 @@ Once approved, users can login using:
 
 ### Teacher
 - Access: Full
-- Features: Add students, mark attendance, view reports, save notes, view Google sheets data
+- Features: Add students, mark attendance, add reward points, view reports, view Google sheets data
 - Class Selection: Required
 
 ### Volunteer
 - Access: Full
-- Features: Add students, mark attendance, view reports, save notes, view Google sheets data
+- Features: Add students, mark attendance, add reward points, view reports, view Google sheets data
 - Class Selection: Optional
 
 ### Student

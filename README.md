@@ -1,6 +1,6 @@
-# VBS Good Shepherd Church - Attendance & Notes Web Interface
+# VBS Good Shepherd Church - Attendance & Rewards Web Interface
 
-A web interface for marking attendance and maintaining class notes for VBS Good Shepherd Church, hosted on GitHub Pages.
+A web interface for marking attendance, managing reward points, and viewing class dashboards for VBS Good Shepherd Church, hosted on GitHub Pages.
 
 ## Features
 
@@ -15,9 +15,13 @@ A web interface for marking attendance and maintaining class notes for VBS Good 
   - Automatic "not on roll" for new students
   - Download as CSV
   
-- **Class Notes**
-  - Save notes per class
-  - Date-based availability control
+- **Dashboards**
+  - Attendance dashboard with class-wise on-roll and present counts
+  - Rewards dashboard with group points and top 10 boys/girls
+
+- **Reward Points**
+  - Teachers and directors can add points to students
+  - Points sync to Google Sheets and local cache
   
 - **Google Drive Integration** ⭐ NEW
   - Auto-sync attendance to Google Sheets

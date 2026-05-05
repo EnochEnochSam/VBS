@@ -375,7 +375,117 @@ function columnLetter(n) {
 
 function refreshDashboardIfVisible() {
     if (dashboardSection && dashboardSection.style.display === 'block') {
+        showDashboardTab(dashboardActiveTab);
         loadDashboardData();
+    }
+}
+
+function renderDashboardAttendanceSummary(attendanceSummaries, dateConfigs) {
+    const headRow = document.getElementById('attendance-summary-head-row');
+    const body = document.getElementById('attendance-summary-body');
+    if (!headRow || !body) return;
+
+    const dynamicHeaders = dateConfigs.map(config => `<th>${config.label}</th>`).join('');
+    headRow.innerHTML = `<th>Class</th><th>On Roll</th><th>Today Present</th>${dynamicHeaders}`;
+
+    if (!attendanceSummaries.length) {
+        body.innerHTML = `<tr><td colspan="${3 + dateConfigs.length}">No attendance data found.</td></tr>`;
+        return;
+    }
+
+    const totals = { roll: 0, today: 0, daily: Object.fromEntries(dateConfigs.map(config => [config.key, 0])) };
+
+    body.innerHTML = attendanceSummaries.map(summary => {
+        totals.roll += summary.rollCount;
+        totals.today += summary.todayPresent;
+        dateConfigs.forEach(config => {
+            totals.daily[config.key] += summary.dayPresentCounts[config.key] || 0;
+        });
+
+        const dayCells = dateConfigs.map(config => `<td>${summary.dayPresentCounts[config.key] || 0}</td>`).join('');
+        return `
+            <tr>
+                <td style="text-align:left; font-weight:700;">${summary.classLabel}</td>
+                <td>${summary.rollCount}</td>
+                <td>${summary.todayPresent}</td>
+                ${dayCells}
+            </tr>
+        `;
+    }).join('') + `
+        <tr class="total-row">
+            <td style="text-align:left;">Total</td>
+            <td>${totals.roll}</td>
+            <td>${totals.today}</td>
+            ${dateConfigs.map(config => `<td>${totals.daily[config.key] || 0}</td>`).join('')}
+        </tr>
+    `;
+}
+
+function renderDashboardPoints(studentLeaderboard, groupTotals) {
+    const topGirlsList = document.getElementById('top-girls-students-list');
+    const topBoysList = document.getElementById('top-boys-students-list');
+    const groupPointsList = document.getElementById('group-points-list');
+    const groupPointsCards = document.getElementById('group-points-cards');
+
+    const filteredStudents = dashboardSelectedGroup
+        ? studentLeaderboard.filter(student => (student.group || '') === dashboardSelectedGroup)
+        : studentLeaderboard;
+
+    const girlsLeaderboard = filteredStudents.filter(student => student.gender === 'Female');
+    const top10Girls = girlsLeaderboard.sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName)).slice(0, 10);
+    if (topGirlsList) {
+        topGirlsList.innerHTML = top10Girls.length ? top10Girls.map((student, index) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
+                <div style="min-width:0">
+                    <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</div>
+                    <div style="color:#666;font-size:0.85em;margin-top:4px;">${student.className}${student.group ? ` • ${student.group}` : ''}</div>
+                </div>
+                <div style="font-weight:800;color:#0f172a;margin-left:12px;">${student.points} pts</div>
+            </div>
+        `).join('') : '<p style="color: #999;">No girls student points available</p>';
+    }
+
+    const boysLeaderboard = filteredStudents.filter(student => student.gender === 'Male');
+    const top10Boys = boysLeaderboard.sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName)).slice(0, 10);
+    if (topBoysList) {
+        topBoysList.innerHTML = top10Boys.length ? top10Boys.map((student, index) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
+                <div style="min-width:0">
+                    <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</div>
+                    <div style="color:#666;font-size:0.85em;margin-top:4px;">${student.className}${student.group ? ` • ${student.group}` : ''}</div>
+                </div>
+                <div style="font-weight:800;color:#0f172a;margin-left:12px;">${student.points} pts</div>
+            </div>
+        `).join('') : '<p style="color: #999;">No boys student points available</p>';
+    }
+
+    if (groupPointsList) {
+        const orderedGroups = [...GROUP_OPTIONS, ...Array.from(groupTotals.keys()).filter(group => !GROUP_OPTIONS.includes(group))];
+        groupPointsList.innerHTML = orderedGroups.map(group => `
+            <div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee;">
+                <strong>${group || 'Unassigned'}</strong>
+                <span style="font-weight: 700; color: #2e7d32;">${groupTotals.get(group) || 0} pts</span>
+            </div>
+        `).join('');
+    }
+
+    if (groupPointsCards) {
+        groupPointsCards.innerHTML = `<div class="group-cards-grid">` + GROUP_OPTIONS.map(group => `
+            <div class="group-card" data-group="${(group || '').replace(/"/g, '&quot;')}">
+                <div class="group-name">${group || 'Unassigned'}</div>
+                <div class="group-points">${groupTotals.get(group) || 0} pts</div>
+            </div>
+        `).join('') + `</div>`;
+
+        const cards = groupPointsCards.querySelectorAll('.group-card');
+        cards.forEach(card => {
+            const groupName = card.dataset.group || '';
+            card.classList.toggle('active', (dashboardSelectedGroup || '') === groupName);
+            card.addEventListener('click', () => {
+                dashboardSelectedGroup = dashboardSelectedGroup === groupName ? null : groupName;
+                renderDashboardPoints(studentLeaderboard, groupTotals);
+            });
+        });
     }
 }
 
@@ -1176,6 +1286,7 @@ let currentGoogleUser = null;
 let pendingPostLoginAction = 'home';
 // Dashboard selected group filter (null = show all)
 let dashboardSelectedGroup = null;
+let dashboardActiveTab = 'attendance';
 
 function showAdminLogin() {
     console.log('showAdminLogin called');
@@ -1262,7 +1373,23 @@ function updateClassRequirement() {
 function showDashboard() {
     loginSection.style.display = 'none';
     dashboardSection.style.display = 'block';
+    dashboardActiveTab = 'attendance';
+    showDashboardTab(dashboardActiveTab);
     loadDashboardData();
+}
+
+function showDashboardTab(tabName) {
+    dashboardActiveTab = tabName === 'points' ? 'points' : 'attendance';
+
+    const attendancePanel = document.getElementById('dashboard-attendance-panel');
+    const pointsPanel = document.getElementById('dashboard-points-panel');
+    const attendanceTab = document.getElementById('dashboard-tab-attendance');
+    const pointsTab = document.getElementById('dashboard-tab-points');
+
+    if (attendancePanel) attendancePanel.style.display = dashboardActiveTab === 'attendance' ? 'block' : 'none';
+    if (pointsPanel) pointsPanel.style.display = dashboardActiveTab === 'points' ? 'block' : 'none';
+    if (attendanceTab) attendanceTab.classList.toggle('active', dashboardActiveTab === 'attendance');
+    if (pointsTab) pointsTab.classList.toggle('active', dashboardActiveTab === 'points');
 }
 
 function backToHome() {
@@ -2417,34 +2544,52 @@ async function fetchAttendanceFromGoogleSheets(className = currentClass) {
 
 
 async function loadDashboardData() {
+    const dateConfigs = getAttendanceDateConfigs();
+    const todayKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+    const dashboardDateKey = dateConfigs.some(config => config.key === todayKey) ? todayKey : dateConfigs[0]?.key;
+
+    const setDashboardText = (id, value) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = value;
+    };
+
+    const setDashboardMessage = (id, message) => {
+        const element = document.getElementById(id);
+        if (element) element.innerHTML = `<p style="color:#999;">${message}</p>`;
+    };
+
     if (!googleInitialized || !googleAuthToken) {
-        document.getElementById('total-students-count').textContent = 'Connect Google first';
-        document.getElementById('total-teachers-count').textContent = 'Connect Google first';
-        document.getElementById('total-directors-count').textContent = 'Connect Google first';
-        document.getElementById('today-attendance-count').textContent = 'Connect Google first';
-        const topGirlsList = document.getElementById('top-girls-students-list');
-        const topBoysList = document.getElementById('top-boys-students-list');
-        const groupPointsList = document.getElementById('group-points-list');
-        if (topGirlsList) topGirlsList.innerHTML = '<p style="color: #999;">Connect Google first</p>';
-        if (topBoysList) topBoysList.innerHTML = '<p style="color: #999;">Connect Google first</p>';
-        if (groupPointsList) groupPointsList.innerHTML = '<p style="color: #999;">Connect Google first</p>';
+        setDashboardText('total-students-count', 'Connect Google first');
+        setDashboardText('total-teachers-count', 'Connect Google first');
+        setDashboardText('total-directors-count', 'Connect Google first');
+        setDashboardText('today-attendance-count', 'Connect Google first');
+        const attendanceBody = document.getElementById('attendance-summary-body');
+        if (attendanceBody) attendanceBody.innerHTML = `<tr><td colspan="${3 + dateConfigs.length}">Connect Google first</td></tr>`;
+        setDashboardMessage('top-girls-students-list', 'Connect Google first');
+        setDashboardMessage('top-boys-students-list', 'Connect Google first');
+        setDashboardMessage('group-points-list', 'Connect Google first');
+        const groupPointsCards = document.getElementById('group-points-cards');
+        if (groupPointsCards) groupPointsCards.innerHTML = '<p style="color:#999;">Connect Google first</p>';
         return;
     }
 
     try {
         await ensureClassSheetRewardsMigrated();
-        // Load approved users data
+
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
             range: 'ApprovedUsers!A:H'
         });
 
         const rows = response.result.values || [];
-        let students = 0, teachers = 0, directors = 0;
+        let students = 0;
+        let teachers = 0;
+        let directors = 0;
         const studentLeaderboard = [];
         const groupTotals = new Map(GROUP_OPTIONS.map(group => [group, 0]));
+        const attendanceSummaries = [];
+        let todayAttendance = 0;
 
-        // Count users by role (skip header)
         for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
             if (row.length >= 2) {
@@ -2455,211 +2600,86 @@ async function loadDashboardData() {
             }
         }
 
-        // Aggregate student points and groups by scanning class sheets (points now stored per-class)
         for (const className of CLASS_LIST) {
+            const classLabel = getAttendanceSheetName(className);
+            const emptyDayCounts = Object.fromEntries(dateConfigs.map(config => [config.key, 0]));
+
             try {
                 const sheetResponse = await gapi.client.sheets.spreadsheets.values.get({
                     spreadsheetId: GOOGLE_SPREADSHEET_ID,
-                    range: `${className.charAt(0).toUpperCase() + className.slice(1)}!A:Z`
+                    range: `${classLabel}!A:Z`
                 });
 
                 const values = sheetResponse.result.values || [];
-                if (values.length <= 1) continue;
+                const grid = sheetValuesToAttendanceGrid(values);
+                const dayPresentCounts = { ...emptyDayCounts };
 
-                const header = values[0] || [];
-                const dateConfigs = getAttendanceDateConfigs();
-                const layout = getAttendanceSheetColumnLayout(header);
+                grid.forEach(row => {
+                    const fullName = (row.name || '').trim();
+                    if (!fullName) return;
 
-                for (let r = 1; r < values.length; r++) {
-                    const row = values[r] || [];
-                    const fullName = (row[0] || '').toString().trim();
-                    if (!fullName) continue;
-                    const gender = layout.hasGenderColumn ? normalizeGenderValue(row[1]) : '';
-                    const group = row[layout.groupIndex] || '';
-                    const points = normalizePointsValue(row[layout.pointsIndex]);
-                    studentLeaderboard.push({ fullName, className: className.charAt(0).toUpperCase() + className.slice(1), gender, group, points });
+                    const gender = normalizeGenderValue(row.gender);
+                    const group = row.group || '';
+                    const points = normalizePointsValue(row.points || 0);
+
+                    studentLeaderboard.push({ fullName, className: classLabel, gender, group, points });
                     if (!groupTotals.has(group)) groupTotals.set(group, 0);
                     groupTotals.set(group, groupTotals.get(group) + points);
-                }
-            } catch (error) {
-                // Sheet might not exist, continue
-                console.log(`Sheet ${className} not found or empty while aggregating points`);
-            }
-        }
-            // Aggregate student points and groups by scanning class sheets (points now stored per-class)
-            for (const className of CLASS_LIST) {
-                try {
-                    // Use getClassStudentRewards to properly load students with points from sheets and cache
-                    const students = await getClassStudentRewards(className);
-                
-                    if (!students || students.length === 0) continue;
-                
-                    for (const student of students) {
-                        const fullName = student.fullName || '';
-                        if (!fullName) continue;
-                    
-                        // Try to get gender from the sheet
-                        let gender = '';
-                        try {
-                            const sheetResponse = await gapi.client.sheets.spreadsheets.values.get({
-                                spreadsheetId: GOOGLE_SPREADSHEET_ID,
-                                range: `${className.charAt(0).toUpperCase() + className.slice(1)}!A:Z`
-                            });
-                            const values = sheetResponse.result.values || [];
-                            const grid = sheetValuesToAttendanceGrid(values);
-                            const gridEntry = grid.find(g => g.name && g.name.toLowerCase() === fullName.toLowerCase());
-                            gender = gridEntry?.gender || '';
-                        } catch (err) {
-                            // Continue without gender if sheet read fails
+
+                    dateConfigs.forEach(config => {
+                        if (row.attendance?.[config.key] === 'Present') {
+                            dayPresentCounts[config.key] += 1;
                         }
-                    
-                        const group = student.group || '';
-                        const points = normalizePointsValue(student.points || 0);
-                    
-                        studentLeaderboard.push({ fullName, className: className.charAt(0).toUpperCase() + className.slice(1), gender, group, points });
-                        if (!groupTotals.has(group)) groupTotals.set(group, 0);
-                        groupTotals.set(group, groupTotals.get(group) + points);
-                    }
-                } catch (error) {
-                    // Sheet might not exist, continue
-                    console.log(`Failed to load students from ${className} class:`, error);
-                }
-            }
-
-        document.getElementById('total-students-count').textContent = students;
-        document.getElementById('total-teachers-count').textContent = teachers;
-        document.getElementById('total-directors-count').textContent = directors;
-
-        // Load today's attendance count
-        const dashboardDateKey = (function () {
-            const dateConfigs = getAttendanceDateConfigs();
-            const todayKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
-            return dateConfigs.some(config => config.key === todayKey) ? todayKey : dateConfigs[0].key;
-        })();
-        let todayAttendance = 0;
-
-        // Check all class sheets for the selected attendance day
-        for (const className of CLASS_LIST) {
-            try {
-                const sheetResponse = await gapi.client.sheets.spreadsheets.values.get({
-                    spreadsheetId: GOOGLE_SPREADSHEET_ID,
-                    range: `${className.charAt(0).toUpperCase() + className.slice(1)}!A:Z`
+                    });
                 });
 
-                const attendanceGrid = sheetValuesToAttendanceGrid(sheetResponse.result.values || []);
-                attendanceGrid.forEach(row => {
-                    if (row.attendance?.[dashboardDateKey] === 'Present') {
-                        todayAttendance++;
-                    }
+                attendanceSummaries.push({
+                    classLabel,
+                    rollCount: grid.length,
+                    todayPresent: dashboardDateKey ? (dayPresentCounts[dashboardDateKey] || 0) : 0,
+                    dayPresentCounts
                 });
+
+                todayAttendance += dashboardDateKey ? (dayPresentCounts[dashboardDateKey] || 0) : 0;
             } catch (error) {
-                // Sheet might not exist, continue
-                console.log(`Sheet ${className} not found or empty`);
-            }
-        }
-
-        document.getElementById('today-attendance-count').textContent = todayAttendance;
-
-        const topGirlsList = document.getElementById('top-girls-students-list');
-        const topBoysList = document.getElementById('top-boys-students-list');
-        
-        const renderGenderTopStudents = () => {
-            // Filter girls
-            const girlsLeaderboard = studentLeaderboard.filter(s => s.gender === 'Female');
-            const top10Girls = girlsLeaderboard.sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName)).slice(0, 10);
-            
-            if (!top10Girls.length) {
-                topGirlsList.innerHTML = '<p style="color: #999;">No girls student points available</p>';
-            } else {
-                topGirlsList.innerHTML = top10Girls.map((student, index) => `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
-                        <div style="min-width:0">
-                            <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</div>
-                            <div style="color:#666;font-size:0.85em;margin-top:4px;">${student.className}${student.group ? ` • ${student.group}` : ''}</div>
-                        </div>
-                        <div style="font-weight:800;color:#0f172a;margin-left:12px;">${student.points} pts</div>
-                    </div>
-                `).join('');
-            }
-            
-            // Filter boys
-            const boysLeaderboard = studentLeaderboard.filter(s => s.gender === 'Male');
-            const top10Boys = boysLeaderboard.sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName)).slice(0, 10);
-            
-            if (!top10Boys.length) {
-                topBoysList.innerHTML = '<p style="color: #999;">No boys student points available</p>';
-            } else {
-                topBoysList.innerHTML = top10Boys.map((student, index) => `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
-                        <div style="min-width:0">
-                            <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</div>
-                            <div style="color:#666;font-size:0.85em;margin-top:4px;">${student.className}${student.group ? ` • ${student.group}` : ''}</div>
-                        </div>
-                        <div style="font-weight:800;color:#0f172a;margin-left:12px;">${student.points} pts</div>
-                    </div>
-                `).join('');
-            }
-        };
-        
-        renderGenderTopStudents();
-
-        const groupPointsList = document.getElementById('group-points-list');
-        const groupPointsCards = document.getElementById('group-points-cards');
-        if (groupPointsList) {
-            const orderedGroups = [...GROUP_OPTIONS, ...Array.from(groupTotals.keys()).filter(group => !GROUP_OPTIONS.includes(group))];
-            groupPointsList.innerHTML = orderedGroups.map(group => `
-                <div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee;">
-                    <strong>${group || 'Unassigned'}</strong>
-                    <span style="font-weight: 700; color: #2e7d32;">${groupTotals.get(group) || 0} pts</span>
-                </div>
-            `).join('');
-        }
-
-        if (groupPointsCards) {
-            // Ensure all configured groups are shown as cards (preserve order)
-            groupPointsCards.innerHTML = `<div class="group-cards-grid">` + GROUP_OPTIONS.map(group => `
-                <div class="group-card" data-group="${(group || '').replace(/"/g, '&quot;')}">
-                    <div class="group-name">${group || 'Unassigned'}</div>
-                    <div class="group-points">${groupTotals.get(group) || 0} pts</div>
-                </div>
-            `).join('') + `</div>`;
-
-            // Attach click handlers to filter top students by group
-            const cards = groupPointsCards.querySelectorAll('.group-card');
-            cards.forEach(card => {
-                const groupName = card.dataset.group || '';
-                if ((dashboardSelectedGroup || '') === groupName) {
-                    card.classList.add('active');
-                } else {
-                    card.classList.remove('active');
-                }
-                card.addEventListener('click', (e) => {
-                    const clickedGroup = card.dataset.group || '';
-                    if (dashboardSelectedGroup === clickedGroup) {
-                        dashboardSelectedGroup = null;
-                    } else {
-                        dashboardSelectedGroup = clickedGroup;
-                    }
-                    // Update visuals
-                    cards.forEach(c => c.classList.toggle('active', (c.dataset.group || '') === (dashboardSelectedGroup || '')));
-                    // Re-render top students with gender separation
-                    renderGenderTopStudents();
+                console.log(`Sheet ${classLabel} not found or empty while loading dashboard`, error);
+                attendanceSummaries.push({
+                    classLabel,
+                    rollCount: 0,
+                    todayPresent: 0,
+                    dayPresentCounts: emptyDayCounts
                 });
-            });
+            }
         }
 
+        setDashboardText('total-students-count', students);
+        setDashboardText('total-teachers-count', teachers);
+        setDashboardText('total-directors-count', directors);
+        setDashboardText('today-attendance-count', todayAttendance);
+
+        renderDashboardAttendanceSummary(attendanceSummaries, dateConfigs);
+        renderDashboardPoints(studentLeaderboard, groupTotals);
+        showDashboardTab(dashboardActiveTab);
     } catch (error) {
         console.error('Failed to load dashboard data:', error);
-        document.getElementById('total-students-count').textContent = 'Error';
-        document.getElementById('total-teachers-count').textContent = 'Error';
-        document.getElementById('total-directors-count').textContent = 'Error';
-        document.getElementById('today-attendance-count').textContent = 'Error';
+        setDashboardText('total-students-count', 'Error');
+        setDashboardText('total-teachers-count', 'Error');
+        setDashboardText('total-directors-count', 'Error');
+        setDashboardText('today-attendance-count', 'Error');
+
+        const attendanceBody = document.getElementById('attendance-summary-body');
+        if (attendanceBody) {
+            attendanceBody.innerHTML = `<tr><td colspan="${3 + dateConfigs.length}">Error loading attendance data</td></tr>`;
+        }
+
         const topGirlsList = document.getElementById('top-girls-students-list');
         const topBoysList = document.getElementById('top-boys-students-list');
         const groupPointsList = document.getElementById('group-points-list');
+        const groupPointsCards = document.getElementById('group-points-cards');
         if (topGirlsList) topGirlsList.innerHTML = '<p style="color: red;">Error loading girls student data</p>';
         if (topBoysList) topBoysList.innerHTML = '<p style="color: red;">Error loading boys student data</p>';
         if (groupPointsList) groupPointsList.innerHTML = '<p style="color: red;">Error loading group points</p>';
+        if (groupPointsCards) groupPointsCards.innerHTML = '<p style="color: red;">Error loading group points</p>';
     }
 }
 
