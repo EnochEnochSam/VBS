@@ -1615,6 +1615,10 @@ function updateGoogleStatus() {
     const authBtn = document.getElementById('google-auth-btn');
     const googleLabel = getConnectedGoogleLabel();
     const isLoggedIn = !!currentUser || !!currentRole;
+    const isHomePage = loginSection && loginSection.style.display !== 'none';
+    const showLogoutOnly = isHomePage && isLoggedIn;
+    const showLoginControls = isHomePage && !isLoggedIn;
+    const showConnectOnly = !isHomePage;
 
     const applyConnectedState = () => {
         if (homeGoogleUser) {
@@ -1659,9 +1663,12 @@ function updateGoogleStatus() {
             homeGoogleStatus.style.border = '1px solid #c3e6cb';
         }
         if (homeActionButtons) homeActionButtons.style.display = 'flex';
-        if (topRightConnectBtn) topRightConnectBtn.textContent = '🔓 Disconnect Google';
-        if (topRightLoginBtn) topRightLoginBtn.style.display = 'inline-flex';
-        if (topRightLogoutBtn) topRightLogoutBtn.style.display = isLoggedIn ? 'inline-flex' : 'none';
+        if (topRightConnectBtn) {
+            topRightConnectBtn.textContent = '🔗 Connect Google';
+            topRightConnectBtn.style.display = (showLoginControls || showConnectOnly) ? 'inline-flex' : 'none';
+        }
+        if (topRightLoginBtn) topRightLoginBtn.style.display = showLoginControls ? 'inline-flex' : 'none';
+        if (topRightLogoutBtn) topRightLogoutBtn.style.display = showLogoutOnly ? 'inline-flex' : 'none';
         applyConnectedState();
     } else if (googleInitialized) {
         if (statusEl) {
@@ -1676,9 +1683,12 @@ function updateGoogleStatus() {
             homeGoogleStatus.style.border = '1px solid #ffeaa7';
         }
         if (homeActionButtons) homeActionButtons.style.display = 'flex';
-        if (topRightConnectBtn) topRightConnectBtn.textContent = '🔗 Connect Google';
-        if (topRightLoginBtn) topRightLoginBtn.style.display = 'inline-flex';
-        if (topRightLogoutBtn) topRightLogoutBtn.style.display = isLoggedIn ? 'inline-flex' : 'none';
+        if (topRightConnectBtn) {
+            topRightConnectBtn.textContent = '🔗 Connect Google';
+            topRightConnectBtn.style.display = (showLoginControls || showConnectOnly) ? 'inline-flex' : 'none';
+        }
+        if (topRightLoginBtn) topRightLoginBtn.style.display = showLoginControls ? 'inline-flex' : 'none';
+        if (topRightLogoutBtn) topRightLogoutBtn.style.display = showLogoutOnly ? 'inline-flex' : 'none';
         applyDisconnectedState('Connect Google first to continue.');
     } else {
         if (statusEl) {
@@ -1693,9 +1703,12 @@ function updateGoogleStatus() {
             homeGoogleStatus.style.border = '1px solid #f5c6cb';
         }
         if (homeActionButtons) homeActionButtons.style.display = 'flex';
-        if (topRightConnectBtn) topRightConnectBtn.textContent = '🔗 Connect Google';
-        if (topRightLoginBtn) topRightLoginBtn.style.display = 'inline-flex';
-        if (topRightLogoutBtn) topRightLogoutBtn.style.display = isLoggedIn ? 'inline-flex' : 'none';
+        if (topRightConnectBtn) {
+            topRightConnectBtn.textContent = '🔗 Connect Google';
+            topRightConnectBtn.style.display = (showLoginControls || showConnectOnly) ? 'inline-flex' : 'none';
+        }
+        if (topRightLoginBtn) topRightLoginBtn.style.display = showLoginControls ? 'inline-flex' : 'none';
+        if (topRightLogoutBtn) topRightLogoutBtn.style.display = showLogoutOnly ? 'inline-flex' : 'none';
         applyDisconnectedState('Google API not configured. Check your setup.');
     }
 }
@@ -1838,97 +1851,99 @@ async function addStudentFromInput() {
     input.value = '';
     genderSelect.value = '';
     await loadClassData();
-    alert(`✅ ${name} added successfully!`);
+    alert(`✓ ${name} added successfully!`);
 }
 
-function addStudent() {
-    if (!isWithinDateRange()) {
-        alert(`Features are not available. ${getDateRangeStatus()}`);
-        return;
+async function updateClassStudentRewards(className, studentName, updates = {}, gmail = '') {
+    if (!googleInitialized || !googleAuthToken) {
+        return false;
     }
-    const name = prompt('Enter student name:');
-    if (name) {
-        const attendance = JSON.parse(localStorage.getItem(`${currentClass}-attendance`) || '[]');
-        attendance.push({ name, present: false });
-        localStorage.setItem(`${currentClass}-attendance`, JSON.stringify(attendance));
-        loadClassData();
-    }
-}
 
-function markAttendance() {
-    if (!isWithinDateRange()) {
-        alert(`⏰ Features are not available. ${getDateRangeStatus()}`);
-        return;
-    }
-    const updatedGrid = getAttendanceGridFromUI();
-    saveAttendanceGrid(currentClass, updatedGrid);
-    saveStudentRoster(currentClass, updatedGrid.map(row => row.name));
-
-    if (googleAuthToken && googleInitialized) {
-        saveAttendanceToGoogleSheets(updatedGrid, currentClass).then(success => {
-            if (success) {
-                alert('✅ Attendance saved and synced to Google Sheets!');
-            } else {
-                alert('✅ Attendance saved locally (Google sync failed - will retry when connected)');
-            }
+    try {
+        const targetClass = (className || currentClass || '').toString().trim().toLowerCase();
+        const sheetName = getAttendanceSheetName(targetClass);
+        const dateConfigs = getAttendanceDateConfigs();
+        const sheetResp = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `${sheetName}!A:Z`
         });
-    } else {
-        alert('✅ Attendance saved locally (connect Google to sync)');
+        const values = sheetResp.result.values || [];
+        const normalizedStudentName = (studentName || '').toString().trim().toLowerCase();
+
+        let rowIndex = -1;
+        for (let i = 1; i < values.length; i++) {
+            const r = values[i] || [];
+            const name = normalizeStudentName(r[0]).toLowerCase();
+            if (name && name === normalizedStudentName) {
+                rowIndex = i + 1;
+                break;
+            }
+        }
+
+        const existingRow = rowIndex > -1 ? (values[rowIndex - 1] || []) : [];
+        const existingGroup = existingRow[dateConfigs.length + 1] || '';
+        const existingPoints = normalizePointsValue(existingRow[dateConfigs.length + 2]);
+        const groupVal = updates.group !== undefined ? updates.group : existingGroup;
+        const pointsVal = updates.points !== undefined ? normalizePointsValue(updates.points) : existingPoints;
+
+        if (rowIndex === -1) {
+            const emptyDates = dateConfigs.map(() => '');
+            await gapi.client.sheets.spreadsheets.values.append({
+                spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                range: `${sheetName}!A:Z`,
+                valueInputOption: 'RAW',
+                resource: { values: [[studentName || '', ...emptyDates, groupVal, String(pointsVal)]] }
+            });
+        } else {
+            const dateCount = dateConfigs.length;
+            const groupColIndex = 1 + dateCount + 1;
+            const pointsColIndex = groupColIndex + 1;
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                range: `${sheetName}!${columnLetter(groupColIndex)}${rowIndex}:${columnLetter(pointsColIndex)}${rowIndex}`,
+                valueInputOption: 'RAW',
+                resource: { values: [[groupVal, String(pointsVal)]] }
+            });
+        }
+
+        const localGrid = getAttendanceGrid(targetClass) || [];
+        let localFound = false;
+        for (let i = 0; i < localGrid.length; i++) {
+            if ((localGrid[i].name || '').toLowerCase() === normalizedStudentName) {
+                localGrid[i].group = groupVal;
+                localGrid[i].points = pointsVal;
+                localFound = true;
+                break;
+            }
+        }
+        if (!localFound) {
+            const newRow = { name: studentName || '', attendance: {} };
+            dateConfigs.forEach(cfg => newRow.attendance[cfg.key] = '');
+            newRow.group = groupVal;
+            newRow.points = pointsVal;
+            localGrid.push(newRow);
+        }
+        saveAttendanceGrid(targetClass, localGrid);
+
+        const rewardsCache = getStudentRewardsCache(targetClass) || [];
+        const cacheIndex = rewardsCache.findIndex(s => (s.fullName || '').toLowerCase() === normalizedStudentName);
+        if (cacheIndex >= 0) {
+            rewardsCache[cacheIndex].group = groupVal;
+            rewardsCache[cacheIndex].points = pointsVal;
+        } else {
+            rewardsCache.push({ fullName: studentName || '', gmail: gmail || '', role: 'student', class: targetClass, group: groupVal, points: pointsVal });
+        }
+        saveStudentRewardsCache(targetClass, rewardsCache);
+
+        refreshDashboardIfVisible();
+        if (dashboardSection && dashboardSection.style.display === 'block') {
+            await loadDashboardData();
+        }
+        return true;
+    } catch (error) {
+        console.error('Failed to update class student rewards:', error);
+        return false;
     }
-}
-
-function saveNotes() {
-    if (!isWithinDateRange()) {
-        alert(`⏰ Features are not available. ${getDateRangeStatus()}`);
-        return;
-    }
-    const notes = notesTextarea.value;
-    localStorage.setItem(`${currentClass}-notes`, notes);
-    alert('✅ Notes saved successfully!');
-
-    // Placeholder for Google Docs integration
-    // To integrate with Google Docs, use Google Docs API to create or update a document.
-    // Example: gapi.client.docs.documents.create({...}) or update
-}
-
-function backToAdmin() {
-    classSection.style.display = 'none';
-    adminSection.style.display = 'block';
-}
-
-function logoutAdmin() {
-    adminSection.style.display = 'none';
-    loginSection.style.display = 'block';
-    isAdminMode = false;
-    currentClass = '';
-    currentRole = '';
-    currentUser = null;
-    document.getElementById('class-select').value = 'beginners';
-    updateGoogleStatus();
-}
-
-function logoutUser() {
-    classSection.style.display = 'none';
-    attendanceReportSection.style.display = 'none';
-    loginSection.style.display = 'block';
-    isAdminMode = false;
-    currentClass = '';
-    currentUser = null;
-    updateGoogleStatus();
-}
-
-function logoutCurrentSession() {
-    if (adminSection && adminSection.style.display === 'block' && currentRole === 'director') {
-        logoutAdmin();
-        return;
-    }
-
-    if (currentUser || currentRole) {
-        logoutUser();
-        return;
-    }
-
-    backToHome();
 }
 
 async function viewAttendanceReport() {
@@ -1937,7 +1952,7 @@ async function viewAttendanceReport() {
         attendanceRecords = getCurrentAttendanceGrid(currentClass);
         console.log('Using localStorage data for attendance report');
     }
-    
+
     document.getElementById('report-class-title').textContent = currentClass.charAt(0).toUpperCase() + currentClass.slice(1);
     
     if (attendanceRecords.length === 0) {
@@ -2692,10 +2707,9 @@ async function submitAddPoints(event) {
         // Update Google Sheets if available
         if (googleInitialized && googleAuthToken) {
             try {
-                await updateApprovedUserRewards(userEmail, {
-                    points: newPoints,
-                    class: selectedClass
-                });
+                await updateClassStudentRewards(selectedClass, selectedStudent, {
+                    points: newPoints
+                }, userEmail);
                 
                 // Also try to update the class sheet
                 const sheetName = getAttendanceSheetName(selectedClass);
