@@ -199,8 +199,13 @@
                 <option value="senior">Senior</option>
                 <option value="teachers">Teachers</option>
             </select>
-            <button onclick="accessClass()">✓ Access Class</button>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button onclick="accessClass()" style="flex: 1;">✓ Access Class</button>
+                <button onclick="backToAdminPanel()" style="flex: 1; background: #999;">← Back</button>
+            </div>
         </div>
+
+        <button onclick="backToHome()" style="background: #999; width: 100%; margin-top: 20px;">← Back to Home</button>
 
     </div>
 

@@ -1279,6 +1279,13 @@ function showAdminTab(tab) {
     }
 }
 
+function backToAdminPanel() {
+    if (adminSection) {
+        adminSection.style.display = 'block';
+    }
+    showAdminTab('requests');
+}
+
 async function loadRegistrationRequests() {
     if (!googleInitialized || !googleAuthToken) {
         document.getElementById('registration-requests-list').innerHTML = '<p style="color: red;">❌ Google not connected. Please connect to Google first.</p>';
