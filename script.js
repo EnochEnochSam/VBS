@@ -2213,6 +2213,38 @@ async function updateClassStudentRewards(className, studentName, updates = {}, g
     }
 }
 
+async function markAttendance() {
+    try {
+        const grid = getAttendanceGridFromUI();
+        
+        if (!grid || grid.length === 0) {
+            alert('❌ No students to mark attendance for.');
+            return;
+        }
+
+        // Save locally
+        saveAttendanceGrid(currentClass, grid);
+        
+        // Save to Google Sheets if available
+        if (googleInitialized && googleAuthToken) {
+            const saved = await saveAttendanceToGoogleSheets(grid, currentClass);
+            if (saved) {
+                alert(`✅ Attendance marked and saved to Google Sheets for ${grid.length} student(s)!`);
+            } else {
+                alert(`✅ Attendance marked and saved locally. Google Sheets sync failed - try again later.`);
+            }
+        } else {
+            alert(`✅ Attendance marked and saved locally for ${grid.length} student(s)!`);
+        }
+        
+        // Refresh dashboard if visible
+        refreshDashboardIfVisible();
+    } catch (error) {
+        console.error('Error marking attendance:', error);
+        alert('❌ Error marking attendance. Check console for details.');
+    }
+}
+
 async function viewAttendanceReport() {
     let attendanceRecords = await fetchAttendanceFromGoogleSheets();
     if (!attendanceRecords) {
