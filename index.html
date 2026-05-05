@@ -202,7 +202,6 @@
             <button onclick="accessClass()">✓ Access Class</button>
         </div>
 
-        <button onclick="logoutAdmin()" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); width: 100%; margin-top: 20px;">🚪 Logout</button>
     </div>
 
     <div id="class-section" style="display:none;">
@@ -267,7 +266,6 @@
         <h2>📝 Class Notes</h2>
         <textarea id="notes" rows="10" placeholder="Enter your class notes here..."></textarea>
         <button onclick="saveNotes()">💾 Save Notes</button>
-        <button onclick="logoutUser()" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">🚪 Logout</button>
     </div>
 
     <div id="attendance-report-section" style="display:none;">
@@ -307,7 +305,6 @@
         </div>
         <button onclick="(async () => await downloadAttendanceCSV())()">📥 Download as CSV</button>
         <button onclick="backToClass()">← Back to Class</button>
-        <button onclick="logoutUser()" style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">🚪 Logout</button>
     </div>
 
     <script src="script.js?v=2"></script>
