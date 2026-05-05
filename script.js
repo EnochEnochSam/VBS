@@ -1129,7 +1129,32 @@ function showUserLoginForAction(action = 'home') {
 }
 
 function showAttendanceLogin() {
+    if (currentUser && currentRole && googleAuthToken && googleInitialized) {
+        openAttendanceDestinationForCurrentUser();
+        return;
+    }
     showUserLoginForAction('attendance');
+}
+
+async function openAttendanceDestinationForCurrentUser() {
+    loginSection.style.display = 'none';
+    userLoginSection.style.display = 'none';
+
+    if (currentRole === 'director') {
+        adminSection.style.display = 'block';
+        isAdminMode = true;
+        showAdminTab('requests');
+        await loadRegistrationRequests();
+        updateGoogleStatus();
+        return;
+    }
+
+    currentClass = currentUser?.class || currentClass || CLASS_LIST[0];
+    classSection.style.display = 'block';
+    updateClassTitle();
+    setupRoleBasedAccess(currentRole, currentUser?.class);
+    await loadClassData();
+    updateGoogleStatus();
 }
 
 function showRegistration() {
