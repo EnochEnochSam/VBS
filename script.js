@@ -2,7 +2,7 @@
 const ADMIN_USER = 'VBSGoodShepherdChurch';
 const ADMIN_PASS = 'VBSGoodShepherdChurch';
 
-// Date range for attendance and notes (May 6 - May 16, 2026)
+// Date range for attendance (May 6 - May 16, 2026)
 const START_DATE = new Date(2026, 4, 6); // May 6, 2026
 const END_DATE = new Date(2026, 4, 16); // May 16, 2026
 let classDataLoadToken = 0;

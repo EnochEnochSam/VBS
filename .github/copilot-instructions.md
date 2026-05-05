@@ -5,7 +5,7 @@
 
 - [x] Scaffold the Project (created project structure manually)
 
-- [x] Customize the Project (implemented login, admin panel, class attendance and notes)
+- [x] Customize the Project (implemented login, admin panel, class attendance, rewards, and dashboards)
 
 - [x] Install Required Extensions (no extensions needed)
 
