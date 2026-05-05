@@ -1028,7 +1028,7 @@ function getDateRangeStatus() {
 }
 
 // DOM elements - will be initialized after DOM loads
-let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, studentRewardsSection, studentRewardsList, notesTextarea, attendanceReportSection, registrationSection, dashboardSection, addPointsSection;
+let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, studentRewardsSection, studentRewardsList, attendanceReportSection, registrationSection, dashboardSection, addPointsSection;
 let homeGoogleStatus, homeActionButtons, homeGoogleUser, registrationGoogleUser, userGoogleAccount, topRightConnectBtn, topRightLoginBtn, topRightLogoutBtn;
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1045,7 +1045,7 @@ document.addEventListener('DOMContentLoaded', function() {
     attendanceList = document.getElementById('attendance-list');
     studentRewardsSection = document.getElementById('student-rewards-section');
     studentRewardsList = document.getElementById('student-rewards-list');
-    notesTextarea = document.getElementById('notes');
+    // notes textarea removed from UI
     attendanceReportSection = document.getElementById('attendance-report-section');
     
     // Initialize home page elements
@@ -1872,12 +1872,10 @@ async function loadClassData() {
     // Show/hide attendance marking based on date
     const markAttendanceBtn = document.querySelector('button[onclick="markAttendance()"]');
     const addStudentBtn = document.querySelector('button[onclick="addStudentFromInput()"]');
-    const saveNotesBtn = document.querySelector('button[onclick="saveNotes()"]');
     
     if (!withinRange) {
         if (markAttendanceBtn) markAttendanceBtn.disabled = true;
         if (addStudentBtn) addStudentBtn.disabled = true;
-        if (saveNotesBtn) saveNotesBtn.disabled = true;
         
         const statusDiv = document.createElement('div');
         statusDiv.id = 'date-status';
@@ -1890,7 +1888,6 @@ async function loadClassData() {
     } else {
         if (markAttendanceBtn) markAttendanceBtn.disabled = false;
         if (addStudentBtn) addStudentBtn.disabled = false;
-        if (saveNotesBtn) saveNotesBtn.disabled = false;
         
         const existingStatus = document.getElementById('date-status');
         if (existingStatus) existingStatus.remove();
@@ -1932,14 +1929,7 @@ async function loadClassData() {
         }
     }
 
-    // Load notes
-    const notes = localStorage.getItem(`${currentClass}-notes`) || '';
-    notesTextarea.value = notes;
-    if (currentRole === 'student') {
-        notesTextarea.disabled = true;
-    } else {
-        notesTextarea.disabled = !withinRange;
-    }
+    // Class notes feature removed
     
     // Update Google status
     updateGoogleStatus();
@@ -2222,7 +2212,6 @@ function backToClass() {
 function setupRoleBasedAccess(userRole, userClass) {
     const markAttendanceBtn = classSection.querySelector('button[onclick*="markAttendance"]');
     const addStudentBtn = classSection.querySelector('button[onclick*="addStudentFromInput"]');
-    const saveNotesBtn = classSection.querySelector('button[onclick*="saveNotes"]');
     const viewReportBtn = classSection.querySelector('button[onclick*="viewAttendanceReport"]');
     const classSwitcher = document.getElementById('class-switcher');
     const classViewSelect = document.getElementById('class-view-select');
@@ -2244,7 +2233,6 @@ function setupRoleBasedAccess(userRole, userClass) {
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'none';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'inline-block';
         if (addStudentBtn) addStudentBtn.style.display = 'inline-block';
-        if (saveNotesBtn) saveNotesBtn.style.display = 'inline-block';
         if (viewReportBtn) viewReportBtn.style.display = 'inline-block';
     } else if (userRole === 'teacher_view') {
         // Teacher View Only - can only view reports for their assigned class
@@ -2252,7 +2240,6 @@ function setupRoleBasedAccess(userRole, userClass) {
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'none';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'none';
         if (addStudentBtn) addStudentBtn.style.display = 'none';
-        if (saveNotesBtn) saveNotesBtn.style.display = 'none';
         if (viewReportBtn) viewReportBtn.style.display = 'inline-block';
     } else if (userRole === 'director') {
         // Directors can view and update attendance for ALL classes
@@ -2261,7 +2248,6 @@ function setupRoleBasedAccess(userRole, userClass) {
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'block';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'inline-block';
         if (addStudentBtn) addStudentBtn.style.display = 'inline-block';
-        if (saveNotesBtn) saveNotesBtn.style.display = 'inline-block';
         if (viewReportBtn) viewReportBtn.style.display = 'inline-block';
     } else if (userRole === 'admin') {
         // Admins can view and update attendance for ALL classes
@@ -2270,7 +2256,6 @@ function setupRoleBasedAccess(userRole, userClass) {
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'block';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'inline-block';
         if (addStudentBtn) addStudentBtn.style.display = 'inline-block';
-        if (saveNotesBtn) saveNotesBtn.style.display = 'inline-block';
         if (viewReportBtn) viewReportBtn.style.display = 'inline-block';
     } else {
         // Students and other roles can only view reports
@@ -2278,7 +2263,6 @@ function setupRoleBasedAccess(userRole, userClass) {
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'none';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'none';
         if (addStudentBtn) addStudentBtn.style.display = 'none';
-        if (saveNotesBtn) saveNotesBtn.style.display = 'none';
         if (viewReportBtn) viewReportBtn.style.display = 'inline-block';
     }
 }
