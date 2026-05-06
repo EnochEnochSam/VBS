@@ -80,7 +80,7 @@
                 Google account will be used automatically after connecting.
             </div>
 
-            <button type="submit" style="background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">📝 Submit Registration</button>
+            <button type="button" id="submit-registration-btn" style="background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);" onclick="submitRegistration()">📝 Submit Registration</button>
             <button type="button" onclick="backToHome()" style="background: #999;">← Back</button>
         </form>
     </div>
@@ -129,7 +129,7 @@
             <input type="number" id="add-points-amount" placeholder="Enter points (e.g., 5)" min="1" max="100" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 15px; box-sizing: border-box;" required>
 
             <div style="display: flex; gap: 10px;">
-                <button type="submit" style="flex: 1; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">✓ Add Points</button>
+                <button type="button" id="submit-add-points-btn" style="flex: 1; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);" onclick="submitAddPoints()">✓ Add Points</button>
                 <button type="button" onclick="backToHome()" style="flex: 1; background: #999;">← Back</button>
             </div>
         </form>
@@ -305,9 +305,11 @@
         <div id="attendance-list">
             <!-- Students will be added here -->
         </div>
-        <button onclick="markAttendance()">✓ Mark Attendance</button>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+            <button onclick="markAttendance()">✓ Mark Attendance</button>
+            <div id="attendance-save-status" style="font-size:0.9rem;color:#555;">&nbsp;</div>
+        </div>
         <button onclick="(async () => await viewAttendanceReport())()">📊 View Report</button>
-        <!-- Class Notes removed per request -->
     </div>
 
     <div id="attendance-report-section" style="display:none;">

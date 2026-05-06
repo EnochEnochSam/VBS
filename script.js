@@ -11,17 +11,49 @@ const BOYS_GROUP_OPTIONS = ['Abharam', 'Moses', 'Joseph', 'David'];
 const GROUP_OPTIONS = [...GIRLS_GROUP_OPTIONS, ...BOYS_GROUP_OPTIONS];
 let classSheetRewardsMigrationDone = false;
 let classSheetRewardsMigrationPromise = null;
+const attendanceGridMemory = new Map();
+const studentRewardsMemory = new Map();
+const pointsLogMemory = new Map();
+
+function cloneDeep(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function clearLegacyOperationalStorage() {
+    if (typeof localStorage === 'undefined') {
+        return;
+    }
+
+    const suffixes = [
+        '-student-rewards',
+        '-points-log',
+        '-attendance-grid',
+        '-student-roster',
+        '-attendance-history'
+    ];
+    const exactKeys = new Set(['pending-registrations']);
+
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (exactKeys.has(key) || suffixes.some(suffix => key.endsWith(suffix)))) {
+            keysToRemove.push(key);
+        }
+    }
+
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+}
 
 function getStudentRewardsStorageKey(className = currentClass) {
     return `${className}-student-rewards`;
 }
 
 function getStudentRewardsCache(className = currentClass) {
-    return JSON.parse(localStorage.getItem(getStudentRewardsStorageKey(className)) || '[]');
+    return cloneDeep(studentRewardsMemory.get(getStudentRewardsStorageKey(className)) || []);
 }
 
 function saveStudentRewardsCache(className, students) {
-    localStorage.setItem(getStudentRewardsStorageKey(className), JSON.stringify(students));
+    studentRewardsMemory.set(getStudentRewardsStorageKey(className), cloneDeep(students || []));
 }
 
 function getPointsLogStorageKey(className = currentClass) {
@@ -29,11 +61,11 @@ function getPointsLogStorageKey(className = currentClass) {
 }
 
 function getPointsLog(className = currentClass) {
-    return JSON.parse(localStorage.getItem(getPointsLogStorageKey(className)) || '[]');
+    return cloneDeep(pointsLogMemory.get(getPointsLogStorageKey(className)) || []);
 }
 
 function savePointsLog(className, log) {
-    localStorage.setItem(getPointsLogStorageKey(className), JSON.stringify(log));
+    pointsLogMemory.set(getPointsLogStorageKey(className), cloneDeep(log || []));
 }
 
 function addPointsLogEntry(className, studentName, pointsDelta, updatedBy) {
@@ -120,25 +152,34 @@ async function fetchApprovedUsersFromSheets() {
     }
 
     try {
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'ApprovedUsers!A:H'
-        });
-
-        const rows = response.result.values || [];
-        if (rows.length <= 1) {
+        const rows = await getSheetRows('ApprovedUsers');
+        if (rows.length === 0) {
             return [];
         }
 
-        return rows.slice(1).map(row => ({
-            fullName: row[0]?.toString().trim() || '',
-            role: row[1]?.toString().trim().toLowerCase() || '',
-            gmail: row[2]?.toString().trim().toLowerCase() || '',
-            password: row[3]?.toString() || '',
-            class: row[4]?.toString().trim().toLowerCase() || '',
-            approvedDate: row[5]?.toString() || '',
-            group: row[6]?.toString().trim() || '',
-            points: normalizePointsValue(row[7])
+        const headerIsPresent = detectHeaderRow(rows[0], ['full name', 'role', 'gmail']);
+        const headerRow = headerIsPresent ? rows[0] : [];
+        const headerMap = buildHeaderIndexMap(headerRow);
+
+        const idxFullName = resolveFieldIndex('full name', headerMap, ['fullname', 'name'], 0);
+        const idxRole = resolveFieldIndex('role', headerMap, [], 1);
+        const idxGmail = resolveFieldIndex('gmail', headerMap, ['email'], 2);
+        const idxPassword = resolveFieldIndex('password', headerMap, ['passcode'], 3);
+        const idxClass = resolveFieldIndex('class', headerMap, ['class name'], 4);
+        const idxApprovedDate = resolveFieldIndex('approved date', headerMap, ['approval date', 'approved on'], 5);
+        const idxGroup = resolveFieldIndex('group', headerMap, [], 6);
+        const idxPoints = resolveFieldIndex('points', headerMap, ['reward points'], 7);
+
+        const startRow = headerIsPresent ? 1 : 0;
+        return rows.slice(startRow).map(row => ({
+            fullName: row[idxFullName]?.toString().trim() || '',
+            role: row[idxRole]?.toString().trim().toLowerCase() || '',
+            gmail: row[idxGmail]?.toString().trim().toLowerCase() || '',
+            password: row[idxPassword]?.toString() || '',
+            class: row[idxClass]?.toString().trim().toLowerCase() || '',
+            approvedDate: row[idxApprovedDate]?.toString() || '',
+            group: row[idxGroup]?.toString().trim() || '',
+            points: normalizePointsValue(row[idxPoints])
         }));
     } catch (error) {
         console.error('Failed to load approved users:', error);
@@ -232,28 +273,47 @@ async function getClassStudentRewards(className = currentClass) {
     return merged;
 }
 
-async function updateApprovedUserRewards(gmail, updates) {
+async function updateApprovedUserRewards(gmail, updates = {}) {
     // Persist group/points to the class attendance sheet for the student's class
     if (!googleInitialized || !googleAuthToken) {
         return false;
     }
 
     try {
+        const fallbackFullName = (updates.fullName || updates.studentName || '').toString().trim();
+        const fallbackClass = (updates.className || currentClass || '').toString().trim().toLowerCase();
+
         // First find the student's full name and class from ApprovedUsers
-        const resp = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'ApprovedUsers!A:E'
-        });
-        const rows = resp.result.values || [];
+        let rows = [];
         let fullName = null;
         let studentClass = null;
-        for (let i = 1; i < rows.length; i++) {
-            const r = rows[i];
-            if (r[2] && r[2].toString().trim().toLowerCase() === gmail.toLowerCase()) {
-                fullName = r[0]?.toString().trim() || null;
-                studentClass = r[4]?.toString().trim().toLowerCase() || currentClass;
-                break;
+
+        if (gmail) {
+            const resp = await gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                range: 'ApprovedUsers!A:E'
+            });
+            rows = resp.result.values || [];
+            for (let i = 1; i < rows.length; i++) {
+                const r = rows[i];
+                if (r[2] && r[2].toString().trim().toLowerCase() === gmail.toLowerCase()) {
+                    fullName = r[0]?.toString().trim() || null;
+                    studentClass = r[4]?.toString().trim().toLowerCase() || currentClass;
+                    break;
+                }
             }
+        }
+
+        if (!fullName && fallbackFullName) {
+            fullName = fallbackFullName;
+        }
+        if (!studentClass && fallbackClass) {
+            studentClass = fallbackClass;
+        }
+
+        if (!fullName) {
+            console.warn('Could not resolve student name for reward update');
+            return false;
         }
 
         // Fallback: if we couldn't find via ApprovedUsers, use currentClass and attempt match by name
@@ -521,19 +581,31 @@ function getAttendanceRosterKey(className = currentClass) {
 }
 
 function getAttendanceGrid(className = currentClass) {
-    return JSON.parse(localStorage.getItem(getAttendanceStorageKey(className)) || '[]');
+    return cloneDeep(attendanceGridMemory.get(getAttendanceStorageKey(className)) || []);
 }
 
 function saveAttendanceGrid(className, grid) {
-    localStorage.setItem(getAttendanceStorageKey(className), JSON.stringify(grid));
+    attendanceGridMemory.set(getAttendanceStorageKey(className), cloneDeep(grid || []));
 }
 
 function getStudentRoster(className = currentClass) {
-    return JSON.parse(localStorage.getItem(getAttendanceRosterKey(className)) || '[]');
+    const attendanceGrid = getAttendanceGrid(className);
+    if (attendanceGrid.length > 0) {
+        return attendanceGrid.map(row => row.name).filter(Boolean);
+    }
+
+    return [];
 }
 
 function saveStudentRoster(className, roster) {
-    localStorage.setItem(getAttendanceRosterKey(className), JSON.stringify(roster));
+    const attendanceGrid = getAttendanceGrid(className);
+    const rosterNames = Array.isArray(roster) ? roster.filter(Boolean) : [];
+    if (attendanceGrid.length > 0 && rosterNames.length > 0) {
+        attendanceGridMemory.set(getAttendanceStorageKey(className), attendanceGrid.map(row => ({
+            ...row,
+            name: row.name || rosterNames.find(name => name.toLowerCase() === (row.name || '').toLowerCase()) || row.name
+        })));
+    }
 }
 
 function normalizeStudentName(name) {
@@ -616,37 +688,7 @@ function getCurrentAttendanceGrid(className = currentClass) {
         return mergeAttendanceGrid(storedGrid, className);
     }
 
-    const legacyRecords = JSON.parse(localStorage.getItem(`${className}-attendance-history`) || '[]');
-    if (!legacyRecords.length) {
-        return getDefaultAttendanceGrid(className);
-    }
-
-    const dateConfigs = getAttendanceDateConfigs();
-    const roster = new Map();
-    legacyRecords.forEach(record => {
-        const dateKey = record.date ? record.date : '';
-        (record.students || []).forEach(student => {
-            const studentName = normalizeStudentName(student.name);
-            if (!studentName) return;
-            if (!roster.has(studentName.toLowerCase())) {
-                const attendance = {};
-                dateConfigs.forEach(config => {
-                    attendance[config.key] = '';
-                });
-                roster.set(studentName.toLowerCase(), { name: studentName, gender: '', attendance });
-            }
-            const row = roster.get(studentName.toLowerCase());
-            const matchedDate = dateConfigs.find(config => config.label === dateKey || config.key === dateKey || new Date(config.key).toLocaleDateString() === dateKey);
-            if (matchedDate) {
-                row.attendance[matchedDate.key] = student.present ? 'Present' : 'Absent';
-            }
-        });
-    });
-
-    const grid = Array.from(roster.values());
-    saveAttendanceGrid(className, grid);
-    saveStudentRoster(className, grid.map(row => row.name));
-    return grid;
+    return getDefaultAttendanceGrid(className);
 }
 
 function attendanceGridToSheetValues(grid) {
@@ -991,13 +1033,14 @@ function renderStudentRewardsTable(students, options = {}) {
             }
             select.onchange = async () => {
                 student.group = select.value;
-                saveStudentRewardsCache(currentClass, students);
-                if (!student.gmail || !googleInitialized || !googleAuthToken) {
+                if (!googleInitialized || !googleAuthToken) {
+                    alert('❌ Google Sheets is required to save group changes. Please connect Google first.');
                     refreshDashboardIfVisible();
                     return;
                 }
-                const saved = await updateApprovedUserRewards(student.gmail, { group: student.group, points: student.points });
+                const saved = await updateApprovedUserRewards(student.gmail, { group: student.group, points: student.points, fullName: student.fullName, className: currentClass });
                 if (saved) {
+                    saveStudentRewardsCache(currentClass, students);
                     refreshDashboardIfVisible();
                 } else {
                     alert('❌ Could not save group. Please connect Google and try again.');
@@ -1042,18 +1085,16 @@ function renderStudentRewardsTable(students, options = {}) {
                     return;
                 }
                 student.points = normalizePointsValue(student.points) + delta;
-                saveStudentRewardsCache(currentClass, students);
                 // Log the points update with who made it
                 const updatedBy = currentUser?.fullName || 'Unknown';
                 addPointsLogEntry(currentClass, student.fullName, delta, updatedBy);
-                if (!student.gmail || !googleInitialized || !googleAuthToken) {
-                    pointsValue.textContent = String(student.points);
-                    refreshDashboardIfVisible();
-                    alert(`✅ ${student.fullName} awarded ${delta} points by ${updatedBy}.`);
+                if (!googleInitialized || !googleAuthToken) {
+                    alert('❌ Google Sheets is required to save points. Please connect Google first.');
                     return;
                 }
-                const saved = await updateApprovedUserRewards(student.gmail, { group: student.group, points: student.points });
+                const saved = await updateApprovedUserRewards(student.gmail, { group: student.group, points: student.points, fullName: student.fullName, className: currentClass });
                 if (saved) {
+                    saveStudentRewardsCache(currentClass, students);
                     pointsValue.textContent = String(student.points);
                     refreshDashboardIfVisible();
                     alert(`✅ ${student.fullName} awarded ${delta} points by ${updatedBy}.`);
@@ -1142,6 +1183,7 @@ let loginSection, adminLoginSection, userLoginSection, adminSection, classSectio
 let homeGoogleStatus, homeActionButtons, homeGoogleUser, registrationGoogleUser, userGoogleAccount, topRightConnectBtn, topRightLoginBtn, topRightLogoutBtn;
 
 document.addEventListener('DOMContentLoaded', function() {
+    clearLegacyOperationalStorage();
     // Initialize DOM elements
     loginSection = document.getElementById('login-section');
     adminLoginSection = document.getElementById('admin-login-section');
@@ -1155,7 +1197,6 @@ document.addEventListener('DOMContentLoaded', function() {
     attendanceList = document.getElementById('attendance-list');
     studentRewardsSection = document.getElementById('student-rewards-section');
     studentRewardsList = document.getElementById('student-rewards-list');
-    // notes textarea removed from UI
     attendanceReportSection = document.getElementById('attendance-report-section');
     
     // Initialize home page elements
@@ -1413,7 +1454,7 @@ function connectGoogle() {
 }
 
 async function submitRegistration(event) {
-    event.preventDefault();
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
     console.log('Registration form submitted');
 
     const fullName = document.getElementById('reg-full-name').value.trim();
@@ -1448,25 +1489,18 @@ async function submitRegistration(event) {
         timestamp: new Date().toLocaleString()
     };
 
-    addPendingRegistration(registrationData);
-
     if (!googleInitialized || !googleAuthToken) {
-        alert('✅ Registration saved locally. Connect Google whenever possible to sync it to the sheet.');
-        document.querySelector('#registration-section form').reset();
-        backToHome();
+        alert('❌ Google Sheets is required to submit registration. Please connect Google first.');
         return;
     }
 
     const saveResult = await saveRegistrationToGoogleSheets(registrationData);
     if (saveResult.success) {
-        removePendingRegistration(registrationData);
         alert('✅ Registration submitted! Your admin will review and approve your request soon.');
         document.querySelector('#registration-section form').reset();
         backToHome();
     } else {
-        alert(`✅ Registration saved locally. Google sync failed: ${saveResult.error}`);
-        document.querySelector('#registration-section form').reset();
-        backToHome();
+        alert(`❌ Registration could not be saved to Google Sheets: ${saveResult.error}. No local copy was stored.`);
     }
 }
 
@@ -1497,6 +1531,49 @@ function backToAdminPanel() {
     showAdminTab('requests');
 }
 
+function normalizeHeaderName(value) {
+    return (value || '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+}
+
+function buildHeaderIndexMap(headerRow) {
+    const indexMap = new Map();
+    (headerRow || []).forEach((cell, index) => {
+        const key = normalizeHeaderName(cell);
+        if (key && !indexMap.has(key)) {
+            indexMap.set(key, index);
+        }
+    });
+    return indexMap;
+}
+
+function detectHeaderRow(row, requiredHeaders = []) {
+    const normalized = new Set((row || []).map(cell => normalizeHeaderName(cell)).filter(Boolean));
+    return requiredHeaders.some(header => normalized.has(normalizeHeaderName(header)));
+}
+
+function resolveFieldIndex(fieldName, headerMap, aliases = [], fallbackIndex = 0) {
+    const candidates = [fieldName, ...aliases].map(normalizeHeaderName);
+    for (const candidate of candidates) {
+        if (headerMap.has(candidate)) {
+            return headerMap.get(candidate);
+        }
+    }
+    return fallbackIndex;
+}
+
+async function getSheetRows(sheetName) {
+    const response = await gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: GOOGLE_SPREADSHEET_ID,
+        range: `${sheetName}!A:Z`
+    });
+    return response.result.values || [];
+}
+
 async function loadRegistrationRequests() {
     if (!googleInitialized || !googleAuthToken) {
         document.getElementById('registration-requests-list').innerHTML = '<p style="color: red;">❌ Google not connected. Please connect to Google first.</p>';
@@ -1504,27 +1581,34 @@ async function loadRegistrationRequests() {
     }
 
     try {
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'Registrations!A:G'
-        });
-
-        const rows = response.result.values || [];
-        if (rows.length <= 1) {
+        const rows = await getSheetRows('Registrations');
+        if (rows.length === 0) {
             document.getElementById('registration-requests-list').innerHTML = '<p style="text-align: center; color: #999;">No pending registration requests</p>';
             return;
         }
 
-        let html = '';
-        for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            if (!row[0]) continue;
+        const headerIsPresent = detectHeaderRow(rows[0], ['full name', 'role', 'gmail', 'status']);
+        const headerRow = headerIsPresent ? rows[0] : [];
+        const headerMap = buildHeaderIndexMap(headerRow);
 
-            const fullName = row[0];
-            const role = row[1];
-            const gmail = row[2];
-            const className = row[3] || 'N/A';
-            const status = row[5];
+        const idxFullName = resolveFieldIndex('full name', headerMap, ['fullname', 'name'], 0);
+        const idxRole = resolveFieldIndex('role', headerMap, [], 1);
+        const idxGmail = resolveFieldIndex('gmail', headerMap, ['email'], 2);
+        const idxClass = resolveFieldIndex('class', headerMap, ['class name'], 3);
+        const idxStatus = resolveFieldIndex('status', headerMap, ['approval status'], 5);
+
+        const startRow = headerIsPresent ? 1 : 0;
+
+        let html = '';
+        for (let i = startRow; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row[idxFullName]) continue;
+
+            const fullName = row[idxFullName];
+            const role = row[idxRole];
+            const gmail = row[idxGmail];
+            const className = row[idxClass] || 'N/A';
+            const status = (row[idxStatus] || '').toString().trim().toLowerCase();
             const rowIndex = i;
 
             if (status === 'pending') {
@@ -1563,36 +1647,80 @@ async function approveRegistration(rowIndex) {
     }
 
     try {
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `Registrations!A${rowIndex + 1}:G${rowIndex + 1}`
-        });
+        const registrationRows = await getSheetRows('Registrations');
+        const headerIsPresent = registrationRows.length > 0 && detectHeaderRow(registrationRows[0], ['full name', 'role', 'gmail', 'status']);
+        const registrationHeader = headerIsPresent ? registrationRows[0] : [];
+        const registrationHeaderMap = buildHeaderIndexMap(registrationHeader);
 
-        const row = response.result.values?.[0];
+        const idxFullName = resolveFieldIndex('full name', registrationHeaderMap, ['fullname', 'name'], 0);
+        const idxRole = resolveFieldIndex('role', registrationHeaderMap, [], 1);
+        const idxGmail = resolveFieldIndex('gmail', registrationHeaderMap, ['email'], 2);
+        const idxClass = resolveFieldIndex('class', registrationHeaderMap, ['class name'], 3);
+        const idxPassword = resolveFieldIndex('password', registrationHeaderMap, ['passcode'], 4);
+        const idxStatus = resolveFieldIndex('status', registrationHeaderMap, ['approval status'], 5);
+
+        const row = registrationRows[rowIndex];
         if (!row) {
             alert('❌ Could not find registration');
             return;
         }
 
-        const fullName = row[0];
-        const role = row[1];
-        const gmail = row[2];
-        const className = row[3];
-        const password = row[4];
+        const fullName = row[idxFullName];
+        const role = row[idxRole];
+        const gmail = row[idxGmail];
+        const className = row[idxClass];
+        const password = row[idxPassword] || '';
+
+        const statusColLetter = columnLetter(idxStatus + 1);
 
         await gapi.client.sheets.spreadsheets.values.update({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `Registrations!F${rowIndex + 1}`,
+            range: `Registrations!${statusColLetter}${rowIndex + 1}`,
             valueInputOption: 'RAW',
             resource: { values: [['approved']] }
         });
 
+        const approvedRows = await getSheetRows('ApprovedUsers');
+        const approvedHeaderIsPresent = approvedRows.length > 0 && detectHeaderRow(approvedRows[0], ['full name', 'role', 'gmail']);
+        const approvedHeader = approvedHeaderIsPresent ? approvedRows[0] : [];
+        const approvedHeaderMap = buildHeaderIndexMap(approvedHeader);
+
+        const approvedIdxFullName = resolveFieldIndex('full name', approvedHeaderMap, ['fullname', 'name'], 0);
+        const approvedIdxRole = resolveFieldIndex('role', approvedHeaderMap, [], 1);
+        const approvedIdxGmail = resolveFieldIndex('gmail', approvedHeaderMap, ['email'], 2);
+        const approvedIdxPassword = resolveFieldIndex('password', approvedHeaderMap, ['passcode'], 3);
+        const approvedIdxClass = resolveFieldIndex('class', approvedHeaderMap, ['class name'], 4);
+        const approvedIdxDate = resolveFieldIndex('approved date', approvedHeaderMap, ['approval date', 'approved on'], 5);
+        const approvedIdxGroup = resolveFieldIndex('group', approvedHeaderMap, [], 6);
+        const approvedIdxPoints = resolveFieldIndex('points', approvedHeaderMap, ['reward points'], 7);
+
+        const maxApprovedIndex = Math.max(
+            approvedIdxFullName,
+            approvedIdxRole,
+            approvedIdxGmail,
+            approvedIdxPassword,
+            approvedIdxClass,
+            approvedIdxDate,
+            approvedIdxGroup,
+            approvedIdxPoints
+        );
+
+        const approvedRow = Array(maxApprovedIndex + 1).fill('');
+        approvedRow[approvedIdxFullName] = fullName || '';
+        approvedRow[approvedIdxRole] = role || '';
+        approvedRow[approvedIdxGmail] = gmail || '';
+        approvedRow[approvedIdxPassword] = password || '';
+        approvedRow[approvedIdxClass] = className || '';
+        approvedRow[approvedIdxDate] = new Date().toLocaleString();
+        approvedRow[approvedIdxGroup] = '';
+        approvedRow[approvedIdxPoints] = 0;
+
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'ApprovedUsers!A:H',
+            range: 'ApprovedUsers!A:Z',
             valueInputOption: 'RAW',
             resource: {
-                values: [[fullName, role, gmail, password, className || '', new Date().toLocaleString(), '', 0]]
+                values: [approvedRow]
             }
         });
 
@@ -1611,9 +1739,16 @@ async function rejectRegistration(rowIndex) {
     }
 
     try {
+        const registrationRows = await getSheetRows('Registrations');
+        const headerIsPresent = registrationRows.length > 0 && detectHeaderRow(registrationRows[0], ['full name', 'role', 'gmail', 'status']);
+        const registrationHeader = headerIsPresent ? registrationRows[0] : [];
+        const registrationHeaderMap = buildHeaderIndexMap(registrationHeader);
+        const idxStatus = resolveFieldIndex('status', registrationHeaderMap, ['approval status'], 5);
+        const statusColLetter = columnLetter(idxStatus + 1);
+
         await gapi.client.sheets.spreadsheets.values.update({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `Registrations!F${rowIndex + 1}`,
+            range: `Registrations!${statusColLetter}${rowIndex + 1}`,
             valueInputOption: 'RAW',
             resource: { values: [['rejected']] }
         });
@@ -1635,20 +1770,35 @@ async function saveRegistrationToGoogleSheets(registrationData) {
     }
 
     try {
+        const registrationRows = await getSheetRows('Registrations');
+        const headerIsPresent = registrationRows.length > 0 && detectHeaderRow(registrationRows[0], ['full name', 'role', 'gmail', 'status']);
+        const registrationHeader = headerIsPresent ? registrationRows[0] : [];
+        const registrationHeaderMap = buildHeaderIndexMap(registrationHeader);
+
+        const idxFullName = resolveFieldIndex('full name', registrationHeaderMap, ['fullname', 'name'], 0);
+        const idxRole = resolveFieldIndex('role', registrationHeaderMap, [], 1);
+        const idxGmail = resolveFieldIndex('gmail', registrationHeaderMap, ['email'], 2);
+        const idxClass = resolveFieldIndex('class', registrationHeaderMap, ['class name'], 3);
+        const idxPassword = resolveFieldIndex('password', registrationHeaderMap, ['passcode'], 4);
+        const idxStatus = resolveFieldIndex('status', registrationHeaderMap, ['approval status'], 5);
+        const idxTimestamp = resolveFieldIndex('timestamp', registrationHeaderMap, ['created at', 'submitted at'], 6);
+
+        const maxIndex = Math.max(idxFullName, idxRole, idxGmail, idxClass, idxPassword, idxStatus, idxTimestamp);
+        const appendRow = Array(maxIndex + 1).fill('');
+        appendRow[idxFullName] = registrationData.fullName;
+        appendRow[idxRole] = registrationData.role;
+        appendRow[idxGmail] = registrationData.gmail;
+        appendRow[idxClass] = registrationData.class;
+        appendRow[idxPassword] = registrationData.password;
+        appendRow[idxStatus] = registrationData.status;
+        appendRow[idxTimestamp] = registrationData.timestamp;
+
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'Registrations!A:G',
+            range: 'Registrations!A:Z',
             valueInputOption: 'RAW',
             resource: {
-                values: [[
-                    registrationData.fullName,
-                    registrationData.role,
-                    registrationData.gmail,
-                    registrationData.class,
-                    registrationData.password,
-                    registrationData.status,
-                    registrationData.timestamp
-                ]]
+                values: [appendRow]
             }
         });
 
@@ -1665,56 +1815,23 @@ async function saveRegistrationToGoogleSheets(registrationData) {
 }
 
 function getPendingRegistrations() {
-    return JSON.parse(localStorage.getItem('pending-registrations') || '[]');
+    return [];
 }
 
 function savePendingRegistrations(pending) {
-    localStorage.setItem('pending-registrations', JSON.stringify(pending));
+    return pending;
 }
 
 function addPendingRegistration(registrationData) {
-    const pending = getPendingRegistrations();
-    pending.push(registrationData);
-    savePendingRegistrations(pending);
-    console.log('Saved pending registration locally', registrationData);
+    console.log('Pending registrations queue removed; direct Google Sheets save is required.', registrationData);
 }
 
 function removePendingRegistration(registrationData) {
-    const pending = getPendingRegistrations();
-    const filtered = pending.filter(item => item.timestamp !== registrationData.timestamp || item.gmail !== registrationData.gmail);
-    savePendingRegistrations(filtered);
-    console.log('Removed pending registration locally', registrationData);
+    console.log('Pending registrations queue removed; nothing to remove locally.', registrationData);
 }
 
 async function syncPendingRegistrationsToGoogleSheets() {
-    const pending = getPendingRegistrations();
-    if (!pending.length || !googleInitialized || !googleAuthToken) {
-        return;
-    }
-
-    try {
-        const values = pending.map(data => [
-            data.fullName,
-            data.role,
-            data.gmail,
-            data.class,
-            data.password,
-            data.status,
-            data.timestamp
-        ]);
-
-        await gapi.client.sheets.spreadsheets.values.append({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'Registrations!A:G',
-            valueInputOption: 'RAW',
-            resource: { values }
-        });
-
-        savePendingRegistrations([]);
-        console.log('Synced pending registrations to Google Sheets');
-    } catch (error) {
-        console.error('Failed to sync pending registrations:', error);
-    }
+    console.log('Pending registrations queue removed; no local sync is performed.');
 }
 
 async function fetchApprovedUserFromSheets(gmail) {
@@ -2056,8 +2173,6 @@ async function loadClassData() {
         }
     }
 
-    // Class notes feature removed
-    
     // Update Google status
     updateGoogleStatus();
 }
@@ -2076,8 +2191,13 @@ async function addStudentFromInput() {
         alert('❌ Please enter a student name.');
         return;
     }
+
+    if (!googleInitialized || !googleAuthToken) {
+        alert('❌ Google Sheets is required to add students. Please connect Google first.');
+        return;
+    }
     
-    const grid = getCurrentAttendanceGrid();
+    const grid = (await fetchAttendanceFromGoogleSheets(currentClass)) || [];
     const studentExists = grid.some(row => row.name.toLowerCase() === name.toLowerCase());
 
     if (studentExists) {
@@ -2093,6 +2213,12 @@ async function addStudentFromInput() {
     newRow.gender = gender;
 
     const updatedGrid = [...grid, newRow];
+    const saved = await saveAttendanceToGoogleSheets(updatedGrid, currentClass);
+    if (!saved) {
+        alert('❌ Could not save student to Google Sheets. No local copy was stored.');
+        return;
+    }
+
     saveAttendanceGrid(currentClass, updatedGrid);
     saveStudentRoster(currentClass, updatedGrid.map(row => row.name));
 
@@ -2109,10 +2235,6 @@ async function addStudentFromInput() {
             points: 0
         });
         saveStudentRewardsCache(currentClass, rewardsCache);
-    }
-
-    if (googleInitialized && googleAuthToken) {
-        await saveAttendanceToGoogleSheets(updatedGrid, currentClass);
     }
     
     input.value = '';
@@ -2222,25 +2344,39 @@ async function markAttendance() {
             return;
         }
 
-        // Save locally
-        saveAttendanceGrid(currentClass, grid);
-        
-        // Save to Google Sheets if available
-        if (googleInitialized && googleAuthToken) {
-            const saved = await saveAttendanceToGoogleSheets(grid, currentClass);
-            if (saved) {
-                alert(`✅ Attendance marked and saved to Google Sheets for ${grid.length} student(s)!`);
-            } else {
-                alert(`✅ Attendance marked and saved locally. Google Sheets sync failed - try again later.`);
-            }
-        } else {
-            alert(`✅ Attendance marked and saved locally for ${grid.length} student(s)!`);
+        console.log('markAttendance invoked', { googleInitialized, hasToken: !!googleAuthToken, class: currentClass, students: grid.length });
+        const statusEl = document.getElementById('attendance-save-status');
+        if (statusEl) statusEl.textContent = 'Attempting to save attendance...';
+        // Ensure we have a target class
+        if (!currentClass || currentClass === '') {
+            const fallback = (document.getElementById('class-view-select') && document.getElementById('class-view-select').value) ||
+                (document.getElementById('class-select') && document.getElementById('class-select').value) || CLASS_LIST[0];
+            currentClass = fallback;
+            console.warn('markAttendance: currentClass was empty; falling back to', currentClass);
         }
+
+        if (!googleInitialized || !googleAuthToken) {
+            alert('❌ Google Sheets is required to save attendance. Please connect Google first.');
+            return;
+        }
+
+        const saved = await saveAttendanceToGoogleSheets(grid, currentClass);
+        if (!saved) {
+            if (statusEl) statusEl.textContent = '❌ Failed to save attendance. See alerts/console.';
+            alert('❌ Attendance could not be saved to Google Sheets. No local copy was stored.');
+            return;
+        }
+
+        saveAttendanceGrid(currentClass, grid);
         
         // Refresh dashboard if visible
         refreshDashboardIfVisible();
+        if (statusEl) statusEl.textContent = `✅ Attendance saved (${grid.length} students)`;
+        alert(`✅ Attendance marked and saved to Google Sheets for ${grid.length} student(s)!`);
     } catch (error) {
         console.error('Error marking attendance:', error);
+        const statusElCatch = document.getElementById('attendance-save-status');
+        if (statusElCatch) statusElCatch.textContent = '❌ Error marking attendance. Check console.';
         alert('❌ Error marking attendance. Check console for details.');
     }
 }
@@ -2513,15 +2649,29 @@ function handleAuthClick() {
 }
 
 async function saveAttendanceToGoogleSheets(classData, className = currentClass) {
+    const statusElSave = document.getElementById('attendance-save-status');
+
     if (!googleInitialized || !googleAuthToken) {
         console.log('Google API not ready - data saved locally only');
+        if (statusElSave) statusElSave.textContent = '❌ Connect Google first';
+        return false;
+    }
+
+    if (!className || className.toString().trim() === '') {
+        console.error('saveAttendanceToGoogleSheets: invalid className', className);
+        if (statusElSave) statusElSave.textContent = '❌ No class selected';
+        try { alert('❌ Attendance save failed: no class selected.'); } catch (e) {}
         return false;
     }
 
     try {
-        const sheetName = getAttendanceSheetName(className);
+        const sheetName = getAttendanceSheetName((className || '').toString().trim());
         const values = attendanceGridToSheetValues(classData);
 
+        console.log('Saving attendance to Sheets', { sheetName, rows: values.length });
+        if (statusElSave) statusElSave.textContent = `Saving to sheet ${sheetName}...`;
+
+        // Clear existing sheet range before writing full table
         await gapi.client.sheets.spreadsheets.values.clear({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
             range: `${sheetName}!A:Z`
@@ -2537,9 +2687,13 @@ async function saveAttendanceToGoogleSheets(classData, className = currentClass)
         });
 
         console.log('Data saved to Google Sheets:', response);
+        try { if (statusElSave) statusElSave.textContent = '✅ Saved to Google Sheets'; } catch (e) {}
         return true;
     } catch (error) {
         console.error('Failed to save to Google Sheets:', error);
+        const googleError = error?.result?.error?.message || error?.message || JSON.stringify(error);
+        try { if (statusElSave) statusElSave.textContent = '❌ ' + googleError; } catch(e) {}
+        try { alert('❌ Failed to save attendance to Google Sheets: ' + googleError); } catch(e) {}
         return false;
     }
 }
@@ -2608,12 +2762,17 @@ async function loadDashboardData() {
     try {
         await ensureClassSheetRewardsMigrated();
 
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'ApprovedUsers!A:H'
-        });
-
-        const rows = response.result.values || [];
+        const approvedUsers = await fetchApprovedUsersFromSheets();
+        const rows = (approvedUsers || []).map(user => [
+            user.fullName,
+            user.role,
+            user.gmail,
+            user.password,
+            user.class,
+            user.approvedDate,
+            user.group,
+            user.points
+        ]);
         let students = 0;
         let teachers = 0;
         let directors = 0;
@@ -2622,7 +2781,7 @@ async function loadDashboardData() {
         const attendanceSummaries = [];
         let todayAttendance = 0;
 
-        for (let i = 1; i < rows.length; i++) {
+        for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
             if (row.length >= 2) {
                 const role = row[1]?.toString().toLowerCase();
@@ -2884,7 +3043,7 @@ async function loadStudentsForAddPoints() {
 }
 
 async function submitAddPoints(event) {
-    event.preventDefault();
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
     
     const selectedClass = document.getElementById('add-points-class').value;
     const selectedStudent = document.getElementById('add-points-student').value;
@@ -2922,34 +3081,33 @@ async function submitAddPoints(event) {
         // Update student points
         student.points = newPoints;
         
-        // Save to localStorage
-        saveStudentRewardsCache(selectedClass, students);
-        
         // Log the points addition
         const updatedBy = currentUser?.fullName || currentGoogleUser?.name || 'Unknown';
         addPointsLogEntry(selectedClass, selectedStudent, pointsAmount, updatedBy);
         
         // Update Google Sheets if available
-        if (googleInitialized && googleAuthToken) {
-            try {
-                await updateClassStudentRewards(selectedClass, selectedStudent, {
-                    points: newPoints
-                }, userEmail);
-                
-                // Also try to update the class sheet
-                const sheetName = getAttendanceSheetName(selectedClass);
-                const remoteGrid = await fetchAttendanceFromGoogleSheets(selectedClass);
-                if (remoteGrid) {
-                    const rowIndex = remoteGrid.findIndex(row => row.name && row.name.toLowerCase() === selectedStudent.toLowerCase());
-                    if (rowIndex !== -1) {
-                        const updatedGrid = [...remoteGrid];
-                        updatedGrid[rowIndex].points = newPoints;
-                        await saveAttendanceToGoogleSheets(selectedClass, updatedGrid);
-                    }
-                }
-            } catch (err) {
-                console.warn('Failed to update Google Sheets:', err);
+        if (!googleInitialized || !googleAuthToken) {
+            alert('❌ Google Sheets is required to save points. Please connect Google first.');
+            return;
+        }
+
+        try {
+            const saved = await updateClassStudentRewards(selectedClass, selectedStudent, {
+                points: newPoints,
+                fullName: selectedStudent,
+                className: selectedClass
+            }, userEmail);
+
+            if (!saved) {
+                alert('❌ Could not save points to Google Sheets. No local copy was stored.');
+                return;
             }
+
+            saveStudentRewardsCache(selectedClass, students);
+        } catch (err) {
+            console.warn('Failed to update Google Sheets:', err);
+            alert('❌ Could not save points to Google Sheets. No local copy was stored.');
+            return;
         }
         
         // Reset form
