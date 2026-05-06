@@ -2300,8 +2300,8 @@ async function updateClassStudentRewards(className, studentName, updates = {}, g
         }
 
         const existingRow = rowIndex > -1 ? (values[rowIndex - 1] || []) : [];
-        const existingGroup = existingRow[dateConfigs.length + 1] || '';
-        const existingPoints = normalizePointsValue(existingRow[dateConfigs.length + 2]);
+        const existingGroup = existingRow[dateConfigs.length + 2] || '';
+        const existingPoints = normalizePointsValue(existingRow[dateConfigs.length + 3]);
         const groupVal = updates.group !== undefined ? updates.group : existingGroup;
         const pointsVal = updates.points !== undefined ? normalizePointsValue(updates.points) : existingPoints;
 
@@ -2311,11 +2311,11 @@ async function updateClassStudentRewards(className, studentName, updates = {}, g
                 spreadsheetId: GOOGLE_SPREADSHEET_ID,
                 range: `${sheetName}!A:Z`,
                 valueInputOption: 'RAW',
-                resource: { values: [[studentName || '', ...emptyDates, groupVal, String(pointsVal)]] }
+                resource: { values: [[studentName || '', '', ...emptyDates, groupVal, String(pointsVal)]] }
             });
         } else {
             const dateCount = dateConfigs.length;
-            const groupColIndex = 1 + dateCount + 1;
+            const groupColIndex = 2 + dateCount;
             const pointsColIndex = groupColIndex + 1;
             await gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId: GOOGLE_SPREADSHEET_ID,
