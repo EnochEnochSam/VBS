@@ -90,6 +90,8 @@ The app is a static frontend hosted in a browser and may be deployed to GitHub P
 - The app must allow viewing an attendance report.
 - The report must show student rows against date columns.
 - The app must support exporting attendance as CSV.
+- Teachers' attendance shall not be displayed anywhere except to directors.
+- Only directors can view teachers' attendance records.
 
 ### 4.5 Reward Points
 - Teachers and directors must be able to add reward points to students.
@@ -110,8 +112,7 @@ The app is a static frontend hosted in a browser and may be deployed to GitHub P
   - Total directors
   - Today’s attendance
   - Class-wise on-roll counts
-  - Class-wise present counts
-- The points dashboard must show:
+  - Class-wise present counts  - Note: Teachers' individual attendance records are not displayed in any dashboard view except to directors through a separate view- The points dashboard must show:
   - Group point totals
   - Top boys leaderboard
   - Top girls leaderboard

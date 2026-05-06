@@ -1982,6 +1982,14 @@ function updateClassTitle() {
 async function switchClassView() {
     const selectedClass = document.getElementById('class-view-select').value;
     if (!selectedClass) return;
+    
+    // Teachers' attendance shall not be displayed except to directors
+    if (selectedClass.toLowerCase() === 'teachers' && currentRole !== 'director') {
+        alert('Teachers\' attendance records are only accessible to directors.');
+        document.getElementById('class-view-select').value = currentClass || 'beginners';
+        return;
+    }
+    
     currentClass = selectedClass;
     updateClassTitle();
     await loadClassData();
@@ -2412,6 +2420,14 @@ async function markAttendance() {
 }
 
 async function viewAttendanceReport() {
+    // Teachers' attendance shall not be displayed except to directors
+    if (currentClass.toLowerCase() === 'teachers' && currentRole !== 'director') {
+        document.getElementById('attendance-report-body').innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color: #d32f2f;">Teachers\' attendance records are only visible to directors.</td></tr>';
+        classSection.style.display = 'none';
+        attendanceReportSection.style.display = 'block';
+        return;
+    }
+
     let attendanceRecords = await fetchAttendanceFromGoogleSheets();
     if (!attendanceRecords) {
         attendanceRecords = getCurrentAttendanceGrid(currentClass);
@@ -2534,6 +2550,24 @@ function backToClass() {
     classSection.style.display = 'block';
 }
 
+// Hide/show Teachers option in class selectors based on user role
+function filterTeachersFromClassSelectors(userRole) {
+    const classViewSelect = document.getElementById('class-view-select');
+    const addStudentClassSelector = document.getElementById('add-student-class-selector');
+    
+    [classViewSelect, addStudentClassSelector].forEach(selector => {
+        if (!selector) return;
+        const teachersOption = Array.from(selector.options).find(opt => opt.value === 'teachers');
+        if (teachersOption) {
+            if (userRole === 'director' || userRole === 'admin') {
+                teachersOption.style.display = 'block';
+            } else {
+                teachersOption.style.display = 'none';
+            }
+        }
+    });
+}
+
 function setupRoleBasedAccess(userRole, userClass) {
     const markAttendanceBtn = classSection.querySelector('button[onclick*="markAttendance"]');
     const addStudentBtn = classSection.querySelector('button[onclick*="addStudentFromInput"]');
@@ -2542,6 +2576,9 @@ function setupRoleBasedAccess(userRole, userClass) {
     const classViewSelect = document.getElementById('class-view-select');
     const addStudentClassSelector = document.getElementById('add-student-class-selector');
     const rewardsSection = document.getElementById('student-rewards-section');
+
+    // Filter Teachers option based on user role
+    filterTeachersFromClassSelectors(userRole);
 
     const canManageRewards = userRole === 'director' || userRole === 'admin' || userRole === 'teacher';
     if (rewardsSection) {
@@ -2822,6 +2859,11 @@ async function loadDashboardData() {
         }
 
         for (const className of CLASS_LIST) {
+            // Teachers' attendance shall not be displayed except to directors
+            if (className.toLowerCase() === 'teachers' && currentRole !== 'director') {
+                continue;
+            }
+
             const classLabel = getAttendanceSheetName(className);
             const emptyDayCounts = Object.fromEntries(dateConfigs.map(config => [config.key, 0]));
 
