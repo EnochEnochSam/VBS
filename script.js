@@ -214,6 +214,7 @@ function mergeStudentRewards(remoteStudents, cachedStudents) {
 }
 
 async function getClassStudentRewards(className = currentClass) {
+    const normalizedClassName = (className || '').toString().trim().toLowerCase();
     const cachedStudents = getStudentRewardsCache(className);
     const approvedUsers = await fetchApprovedUsersFromSheets();
 
@@ -223,7 +224,11 @@ async function getClassStudentRewards(className = currentClass) {
     }
 
     // Build a map of approved students for this class
-    const classApproved = approvedUsers.filter(user => user.role === 'student' && user.class === className);
+    const classApproved = approvedUsers.filter(user => {
+        const userRole = (user.role || '').toString().trim().toLowerCase();
+        const userClass = (user.class || '').toString().trim().toLowerCase();
+        return userRole === 'student' && userClass === normalizedClassName;
+    });
 
     // Try to read group/points from the class sheet
     let sheetStudents = [];
@@ -235,6 +240,34 @@ async function getClassStudentRewards(className = currentClass) {
                 group: row.group || '',
                 points: normalizePointsValue(row.points || 0)
             }));
+        }
+
+        // Fallback: if the parsed grid is empty, read the raw sheet and use the
+        // first column names directly so Add Points still works.
+        if (sheetStudents.length === 0) {
+            try {
+                const sheetName = getAttendanceSheetName(className);
+                const rawResponse = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                    range: `${sheetName}!A:Z`
+                });
+                const rawRows = rawResponse.result.values || [];
+                const startRow = rawRows.length > 0 && detectHeaderRow(rawRows[0], ['student name', 'gender']) ? 1 : 0;
+
+                sheetStudents = rawRows.slice(startRow)
+                    .map(row => {
+                        const fullName = normalizeStudentName(row?.[0]);
+                        if (!fullName) return null;
+                        return {
+                            fullName,
+                            group: row?.[rawRows[0]?.length - 2] || '',
+                            points: normalizePointsValue(row?.[rawRows[0]?.length - 1])
+                        };
+                    })
+                    .filter(Boolean);
+            } catch (rawError) {
+                console.warn('Raw attendance fallback failed for Add Points:', rawError);
+            }
         }
     }
 
@@ -254,18 +287,39 @@ async function getClassStudentRewards(className = currentClass) {
         };
     });
 
-    // Include any cached-only students that are not in approved list
-    const mergedKeys = new Set(merged.map(s => s.fullName.toLowerCase()));
+    // Include any sheet-only students that are not in approved list.
+    // This keeps Add Points usable for students added directly to class sheets.
+    const mergedKeys = new Set(merged.map(s => (s.fullName || '').toLowerCase()));
+    (sheetStudents || []).forEach(s => {
+        const key = (s.fullName || '').toLowerCase();
+        if (!key || mergedKeys.has(key)) {
+            return;
+        }
+        merged.push({
+            fullName: s.fullName,
+            gmail: '',
+            role: 'student',
+            class: normalizedClassName,
+            group: s.group || '',
+            points: normalizePointsValue(s.points)
+        });
+        mergedKeys.add(key);
+    });
+
+    // Include any cached-only students that are not in approved list/sheet.
+    const mergedKeysWithSheet = new Set(merged.map(s => (s.fullName || '').toLowerCase()));
     (cachedStudents || []).forEach(c => {
-        if (!mergedKeys.has((c.fullName || c.fullName).toLowerCase())) {
+        const cacheKey = (c.fullName || '').toLowerCase();
+        if (!cacheKey || !mergedKeysWithSheet.has(cacheKey)) {
             merged.push({
                 fullName: c.fullName,
                 gmail: c.gmail || '',
                 role: 'student',
-                class: className,
+                class: normalizedClassName,
                 group: c.group || '',
                 points: normalizePointsValue(c.points)
             });
+            mergedKeysWithSheet.add(cacheKey);
         }
     });
 
@@ -1680,44 +1734,20 @@ async function approveRegistration(rowIndex) {
             resource: { values: [['approved']] }
         });
 
-        const approvedRows = await getSheetRows('ApprovedUsers');
-        const approvedHeaderIsPresent = approvedRows.length > 0 && detectHeaderRow(approvedRows[0], ['full name', 'role', 'gmail']);
-        const approvedHeader = approvedHeaderIsPresent ? approvedRows[0] : [];
-        const approvedHeaderMap = buildHeaderIndexMap(approvedHeader);
-
-        const approvedIdxFullName = resolveFieldIndex('full name', approvedHeaderMap, ['fullname', 'name'], 0);
-        const approvedIdxRole = resolveFieldIndex('role', approvedHeaderMap, [], 1);
-        const approvedIdxGmail = resolveFieldIndex('gmail', approvedHeaderMap, ['email'], 2);
-        const approvedIdxPassword = resolveFieldIndex('password', approvedHeaderMap, ['passcode'], 3);
-        const approvedIdxClass = resolveFieldIndex('class', approvedHeaderMap, ['class name'], 4);
-        const approvedIdxDate = resolveFieldIndex('approved date', approvedHeaderMap, ['approval date', 'approved on'], 5);
-        const approvedIdxGroup = resolveFieldIndex('group', approvedHeaderMap, [], 6);
-        const approvedIdxPoints = resolveFieldIndex('points', approvedHeaderMap, ['reward points'], 7);
-
-        const maxApprovedIndex = Math.max(
-            approvedIdxFullName,
-            approvedIdxRole,
-            approvedIdxGmail,
-            approvedIdxPassword,
-            approvedIdxClass,
-            approvedIdxDate,
-            approvedIdxGroup,
-            approvedIdxPoints
-        );
-
-        const approvedRow = Array(maxApprovedIndex + 1).fill('');
-        approvedRow[approvedIdxFullName] = fullName || '';
-        approvedRow[approvedIdxRole] = role || '';
-        approvedRow[approvedIdxGmail] = gmail || '';
-        approvedRow[approvedIdxPassword] = password || '';
-        approvedRow[approvedIdxClass] = className || '';
-        approvedRow[approvedIdxDate] = new Date().toLocaleString();
-        approvedRow[approvedIdxGroup] = '';
-        approvedRow[approvedIdxPoints] = 0;
+        const approvedRow = [
+            fullName || '',
+            role || '',
+            gmail || '',
+            password || '',
+            className || '',
+            new Date().toLocaleString(),
+            '',
+            0
+        ];
 
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'ApprovedUsers!A:Z',
+            range: 'ApprovedUsers!A:H',
             valueInputOption: 'RAW',
             resource: {
                 values: [approvedRow]
