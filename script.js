@@ -1052,19 +1052,17 @@ function getAttendanceGridFromUI() {
         }
     });
 
-    return Array.from(gridByName.values()).map(row => {
+    const result = Array.from(gridByName.values()).map(row => {
         const attendance = {};
         dateConfigs.forEach(config => {
             attendance[config.key] = row.attendance?.[config.key] || '';
         });
 
-        // Try to pick up any group select value from the UI
         let groupVal = row.group || '';
         try {
             const sel = attendanceList.querySelector(`select[data-student][data-group][data-student="${CSS.escape(row.name)}"]`);
             if (sel) groupVal = sel.value || groupVal;
         } catch (e) {
-            // Fallback in environments without CSS.escape
             const sel2 = attendanceList.querySelectorAll('select[data-student][data-group]');
             for (const s of sel2) {
                 if ((s.dataset.student || '').toLowerCase() === (row.name || '').toLowerCase()) {
@@ -1076,6 +1074,51 @@ function getAttendanceGridFromUI() {
 
         return { name: row.name, gender: row.gender || '', attendance, group: groupVal, points: normalizePointsValue(row.points) };
     });
+
+    if (result.length === 0) {
+        const domGrid = parseAttendanceGridFromDOM();
+        if (domGrid.length > 0) {
+            return domGrid;
+        }
+    }
+
+    return result;
+}
+
+function parseAttendanceGridFromDOM() {
+    const dateConfigs = getAttendanceDateConfigs();
+    const rows = [];
+    const tableRows = attendanceList.querySelectorAll('table#attendance-grid-table tbody tr');
+    tableRows.forEach(tr => {
+        const cells = Array.from(tr.querySelectorAll('td'));
+        if (cells.length === 0) return;
+
+        const studentName = normalizeStudentName(cells[0].textContent);
+        if (!studentName) return;
+
+        const attendance = {};
+        dateConfigs.forEach(config => {
+            attendance[config.key] = '';
+        });
+
+        const rowDateSelects = tr.querySelectorAll('select[data-student][data-date]');
+        rowDateSelects.forEach(select => {
+            const dateKey = select.dataset.date;
+            if (dateKey && attendance.hasOwnProperty(dateKey)) {
+                attendance[dateKey] = select.value;
+            }
+        });
+
+        const genderSelect = tr.querySelector('select[data-student][data-gender]');
+        const groupSelect = tr.querySelector('select[data-student][data-group]');
+        const gender = genderSelect ? genderSelect.value : normalizeStudentName(cells[1]?.textContent);
+        const group = groupSelect ? groupSelect.value : normalizeStudentName(cells[cells.length - 2]?.textContent);
+        const pointsValue = normalizePointsValue(groupSelect ? '' : cells[cells.length - 1]?.textContent);
+
+        rows.push({ name: studentName, gender, attendance, group, points: pointsValue });
+    });
+
+    return rows;
 }
 
 function renderStudentRewardsTable(students, options = {}) {
