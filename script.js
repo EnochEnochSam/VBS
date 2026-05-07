@@ -706,7 +706,7 @@ function mergeAttendanceGrid(grid, className = currentClass) {
     const dateConfigs = getAttendanceDateConfigs();
     const roster = getStudentRoster(className);
     const sourceGrid = Array.isArray(grid) ? grid : [];
-    const sourceByName = new Map(sourceGrid.map(row => [row.name.toLowerCase(), row]));
+    const sourceByName = new Map(sourceGrid.filter(row => row?.name).map(row => [row.name.toLowerCase(), row]));
     const combinedNames = new Map();
 
     roster.forEach(studentName => combinedNames.set(studentName.toLowerCase(), studentName));
@@ -717,7 +717,7 @@ function mergeAttendanceGrid(grid, className = currentClass) {
     });
 
     if (combinedNames.size === 0) {
-        return sourceGrid.map(row => {
+        return sourceGrid.filter(row => row?.name).map(row => {
             const attendance = {};
             dateConfigs.forEach(config => {
                 attendance[config.key] = row.attendance?.[config.key] || '';
@@ -797,6 +797,16 @@ function sheetValuesToAttendanceGrid(values) {
     }
 
     const layout = getAttendanceSheetColumnLayout(firstRow);
+    
+    // Determine if first row is actually a header row
+    const isHeaderRow = firstRow.some(cell => {
+        const normalized = normalizeStudentName(cell).toLowerCase();
+        return normalized === 'student name' || normalized === 'gender' || 
+               getAttendanceDateConfigs().some(config => config.label.toLowerCase() === normalized || config.key === normalized) ||
+               normalized === 'group' || normalized === 'points';
+    });
+    
+    const dataStartIndex = isHeaderRow ? 1 : 0;
     const matchingDates = [];
     for (let i = 0; i < dateConfigs.length; i++) {
         const headerValue = normalizeStudentName(firstRow[layout.dateStartIndex + i]);
@@ -807,7 +817,7 @@ function sheetValuesToAttendanceGrid(values) {
     }
 
     const rows = [];
-    for (let i = 1; i < values.length; i++) {
+    for (let i = dataStartIndex; i < values.length; i++) {
         const row = values[i] || [];
         const studentName = normalizeStudentName(row[0]);
         if (!studentName) continue;
