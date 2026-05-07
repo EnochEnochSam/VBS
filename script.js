@@ -852,6 +852,7 @@ function renderAttendanceGrid(grid, editable) {
     dateConfigs.forEach(config => {
         headRow.innerHTML += `<th style="background: #667eea; color: white; padding: 10px; min-width: 110px; white-space: nowrap;">${config.label}</th>`;
     });
+    headRow.innerHTML += '<th style="background: #667eea; color: white; padding: 10px; min-width: 100px; white-space: nowrap;">Days Present</th>';
     headRow.innerHTML += '<th style="background: #667eea; color: white; padding: 10px; min-width: 120px; white-space: nowrap;">Group</th>';
     headRow.innerHTML += '<th style="background: #667eea; color: white; padding: 10px; min-width: 80px; white-space: nowrap;">Points</th>';
     thead.appendChild(headRow);
@@ -922,6 +923,13 @@ function renderAttendanceGrid(grid, editable) {
 
             tr.appendChild(td);
         });
+
+        // Days Present column
+        const daysCell = document.createElement('td');
+        daysCell.style.cssText = 'padding: 8px; border-top: 1px solid #eee; text-align: center; font-weight: 700; background: #e3f2fd; color: #1976d2;';
+        const daysPresent = Object.values(row.attendance || {}).filter(status => status === 'Present').length;
+        daysCell.textContent = String(daysPresent);
+        tr.appendChild(daysCell);
 
         // Group column
         const groupCell = document.createElement('td');
