@@ -5,8 +5,8 @@ Build a browser-based web app for VBS Good Shepherd Church that lets authorized 
 
 ## 2. Scope
 The app must support:
-- User authentication and role-based access
-- Student registration and approval workflow
+- User authentication and role-based access (login based on manually added user data in Google Sheets)
+- Student registration and approval workflow (removed - users will be manually added to Google Sheets)
 - Attendance capture and reporting
 - Reward point management
 - Dashboard summaries for attendance and points
@@ -18,7 +18,6 @@ The app is a static frontend hosted in a browser and may be deployed to GitHub P
 ## 3. User Roles
 ### 3.1 Admin
 - Can log in with admin credentials.
-- Can manage registration requests.
 - Can access all classes.
 - Can view attendance and reward dashboards.
 - Can configure or review class access data.
@@ -48,26 +47,21 @@ The app is a static frontend hosted in a browser and may be deployed to GitHub P
 - The app must support logout.
 - The UI must show login actions when the user is logged out and logout actions when the user is logged in.
 - The app must show the connected Google account when available.
+- Login shall be based on manually added user data in the ApprovedUsers Google Sheet.
 
 ### 4.2 Registration
-- The app must allow new user registration.
-- Registration must capture at least:
-  - Full name
-  - Role
-  - Gmail address
-  - Class, if required by the role
-- Registration requests must be stored for admin review.
-- Admins must be able to approve or reject registrations.
-- Approved users must be usable for login.
+- Registration process is removed.
+- User data must be manually added to the ApprovedUsers Google Sheet in the existing format.
+- No user-facing registration form or approval workflow.
 
 ### 4.3 Class and Student Management
-- The app must support the following classes:
-  - Beginners
-  - Primary
-  - Junior
-  - Intermediate
-  - Senior
-  - Teachers
+- The app must support the following classes with subclasses:
+  - Beginners1, Beginners2
+  - Primary1, Primary2
+  - Junior1, Junior2
+  - Intermediate1, Intermediate2
+  - Senior1, Senior2
+  - Teachers1, Teachers2
 - Authorized users must be able to add new students to a class.
 - The app must prevent duplicate students in the same class.
 - Student data must include at least:
@@ -100,6 +94,8 @@ The app is a static frontend hosted in a browser and may be deployed to GitHub P
 - The app must not keep a local fallback copy of point changes.
 - The app must keep a points log.
 - The app must show point totals per student and per group.
+- Points allocation shall be done through a dedicated "Add Points" interface on the home page only.
+- Points allocation interface shall not be available when accessing a class for attendance updates.
 
 ### 4.6 Dashboards
 - The app must provide a dashboard section.

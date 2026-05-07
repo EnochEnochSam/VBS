@@ -1372,7 +1372,7 @@ window.addEventListener('resize', function() {
     autoApplyLayoutFromViewport();
 });
 
-const CLASS_LIST = ['beginners', 'primary', 'junior', 'intermediate', 'senior', 'teachers'];
+const CLASS_LIST = ['beginners1', 'beginners2', 'primary1', 'primary2', 'junior1', 'junior2', 'intermediate1', 'intermediate2', 'senior1', 'senior2', 'teachers1', 'teachers2'];
 let currentClass = '';
 let currentRole = '';
 let isAdminMode = false;
@@ -1984,9 +1984,9 @@ async function switchClassView() {
     if (!selectedClass) return;
     
     // Teachers' attendance shall not be displayed except to directors
-    if (selectedClass.toLowerCase() === 'teachers' && currentRole !== 'director') {
+    if (selectedClass.toLowerCase().startsWith('teachers') && currentRole !== 'director') {
         alert('Teachers\' attendance records are only accessible to directors.');
-        document.getElementById('class-view-select').value = currentClass || 'beginners';
+        document.getElementById('class-view-select').value = currentClass || 'beginners1';
         return;
     }
     
@@ -2006,12 +2006,18 @@ async function accessClass() {
     adminSection.style.display = 'none';
     classSection.style.display = 'block';
     updateClassTitle();
+    
+    // Pre-fill class selectors with the selected class
+    const classViewSelect = document.getElementById('class-view-select');
+    const addStudentClassSelect = document.getElementById('add-student-class-select');
+    if (classViewSelect) classViewSelect.value = selectedClass;
+    if (addStudentClassSelect) addStudentClassSelect.value = selectedClass;
+    
     setupRoleBasedAccess(currentRole || 'admin', selectedClass);
     await loadClassData();
-    // Auto-open rewards panel for directors immediately after accessing a class
-    if (currentRole === 'director' && studentRewardsSection) {
-        studentRewardsSection.style.display = 'block';
-        try { studentRewardsSection.scrollIntoView({ behavior: 'smooth' }); } catch (e) {}
+    // Hide student-rewards section when accessing class from attendance flow
+    if (studentRewardsSection) {
+        studentRewardsSection.style.display = 'none';
     }
 }
 
@@ -2421,7 +2427,7 @@ async function markAttendance() {
 
 async function viewAttendanceReport() {
     // Teachers' attendance shall not be displayed except to directors
-    if (currentClass.toLowerCase() === 'teachers' && currentRole !== 'director') {
+    if (currentClass.toLowerCase().startsWith('teachers') && currentRole !== 'director') {
         document.getElementById('attendance-report-body').innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color: #d32f2f;">Teachers\' attendance records are only visible to directors.</td></tr>';
         classSection.style.display = 'none';
         attendanceReportSection.style.display = 'block';
@@ -2550,21 +2556,21 @@ function backToClass() {
     classSection.style.display = 'block';
 }
 
-// Hide/show Teachers option in class selectors based on user role
+// Hide/show Teachers options in class selectors based on user role
 function filterTeachersFromClassSelectors(userRole) {
     const classViewSelect = document.getElementById('class-view-select');
     const addStudentClassSelector = document.getElementById('add-student-class-selector');
     
     [classViewSelect, addStudentClassSelector].forEach(selector => {
         if (!selector) return;
-        const teachersOption = Array.from(selector.options).find(opt => opt.value === 'teachers');
-        if (teachersOption) {
+        const teachersOptions = Array.from(selector.options).filter(opt => opt.value.startsWith('teachers'));
+        teachersOptions.forEach(option => {
             if (userRole === 'director' || userRole === 'admin') {
-                teachersOption.style.display = 'block';
+                option.style.display = 'block';
             } else {
-                teachersOption.style.display = 'none';
+                option.style.display = 'none';
             }
-        }
+        });
     });
 }
 
@@ -2606,7 +2612,7 @@ function setupRoleBasedAccess(userRole, userClass) {
     } else if (userRole === 'director') {
         // Directors can view and update attendance for ALL classes
         if (classSwitcher) classSwitcher.style.display = 'none';
-        if (classViewSelect) classViewSelect.value = currentClass || 'beginners';
+        if (classViewSelect) classViewSelect.value = currentClass || 'beginners1';
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'block';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'inline-block';
         if (addStudentBtn) addStudentBtn.style.display = 'inline-block';
@@ -2614,7 +2620,7 @@ function setupRoleBasedAccess(userRole, userClass) {
     } else if (userRole === 'admin') {
         // Admins can view and update attendance for ALL classes
         if (classSwitcher) classSwitcher.style.display = 'block';
-        if (classViewSelect) classViewSelect.value = currentClass || 'beginners';
+        if (classViewSelect) classViewSelect.value = currentClass || 'beginners1';
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'block';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'inline-block';
         if (addStudentBtn) addStudentBtn.style.display = 'inline-block';

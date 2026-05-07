@@ -43,46 +43,10 @@
         <div id="home-google-user" style="text-align: center; margin-bottom: 20px; padding: 10px; border-radius: 8px; font-weight: bold; background-color: #f8f9ff; color: #123d7a; border: 1px solid #d7deea; display:none;"></div>
 
         <div class="home-actions">
-            <button onclick="showRegistration()" style="width: 100%; background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);">✏️ New Registration</button>
             <button onclick="showAttendanceLogin()" style="width: 100%; background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);">✅ Update Attendance</button>
             <button onclick="showDashboard()" style="width: 100%; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">📊 Dashboard</button>
             <button onclick="showAddPoints()" style="width: 100%; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);">⭐ Add Points</button>
         </div>
-    </div>
-
-    <div id="registration-section" style="display:none;">
-        <h1>✏️ New Registration</h1>
-        <form onsubmit="submitRegistration(event)">
-            <label for="reg-full-name">Full Name:</label>
-            <input type="text" id="reg-full-name" placeholder="Enter your full name" required>
-
-            <label for="reg-role">Role:</label>
-            <select id="reg-role" onchange="updateClassRequirement()" required>
-                <option value="">-- Select Role --</option>
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-                <option value="teacher_view">Teacher (View Only)</option>
-                <option value="director">Director</option>
-            </select>
-
-            <label for="reg-class" id="reg-class-label">Class (required for students & teachers):</label>
-            <select id="reg-class" required>
-                <option value="">-- Select Class --</option>
-                <option value="beginners">Beginners</option>
-                <option value="primary">Primary</option>
-                <option value="junior">Junior</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="senior">Senior</option>
-                <option value="teachers">Teachers</option>
-            </select>
-
-            <div id="registration-google-user" style="margin: 10px 0 16px; padding: 10px; border-radius: 6px; background: #f8f9ff; color: #123d7a; border: 1px solid #d7deea;">
-                Google account will be used automatically after connecting.
-            </div>
-
-            <button type="button" id="submit-registration-btn" style="background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);" onclick="submitRegistration()">📝 Submit Registration</button>
-            <button type="button" onclick="backToHome()" style="background: #999;">← Back</button>
-        </form>
     </div>
 
     <div id="admin-login-section" style="display:none;">
@@ -227,12 +191,18 @@
             <p style="margin-bottom: 12px; color: #555;">Select a class to view or manage its attendance.</p>
             <label for="class-select">Choose a class:</label>
             <select id="class-select">
-                <option value="beginners">Beginners</option>
-                <option value="primary">Primary</option>
-                <option value="junior">Junior</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="senior">Senior</option>
-                <option value="teachers">Teachers</option>
+                <option value="beginners1">Beginners1</option>
+                <option value="beginners2">Beginners2</option>
+                <option value="primary1">Primary1</option>
+                <option value="primary2">Primary2</option>
+                <option value="junior1">Junior1</option>
+                <option value="junior2">Junior2</option>
+                <option value="intermediate1">Intermediate1</option>
+                <option value="intermediate2">Intermediate2</option>
+                <option value="senior1">Senior1</option>
+                <option value="senior2">Senior2</option>
+                <option value="teachers1">Teachers1</option>
+                <option value="teachers2">Teachers2</option>
             </select>
             <div style="display: flex; gap: 10px; margin-top: 15px;">
                 <button onclick="accessClass()" style="flex: 1;">✓ Access Class</button>
@@ -253,12 +223,18 @@
         <div id="class-switcher" style="display:none; margin-bottom: 15px;">
             <label for="class-view-select" style="display: block; margin-bottom: 8px; font-weight: 600;">Select class to view:</label>
             <select id="class-view-select" onchange="switchClassView()" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
-                <option value="beginners">Beginners</option>
-                <option value="primary">Primary</option>
-                <option value="junior">Junior</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="senior">Senior</option>
-                <option value="teachers">Teachers</option>
+                <option value="beginners1">Beginners1</option>
+                <option value="beginners2">Beginners2</option>
+                <option value="primary1">Primary1</option>
+                <option value="primary2">Primary2</option>
+                <option value="junior1">Junior1</option>
+                <option value="junior2">Junior2</option>
+                <option value="intermediate1">Intermediate1</option>
+                <option value="intermediate2">Intermediate2</option>
+                <option value="senior1">Senior1</option>
+                <option value="senior2">Senior2</option>
+                <option value="teachers1">Teachers1</option>
+                <option value="teachers2">Teachers2</option>
             </select>
         </div>
         <div style="background-color: #e8f5e9; padding: 12px; border-radius: 6px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between;">
@@ -283,12 +259,18 @@
             <div id="add-student-class-selector" style="display: none; margin-bottom: 10px;">
                 <label for="add-student-class-select" style="font-weight: 600;">Select class to add student to:</label>
                 <select id="add-student-class-select" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ddd; margin-top: 5px;">
-                    <option value="beginners">Beginners</option>
-                    <option value="primary">Primary</option>
-                    <option value="junior">Junior</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="senior">Senior</option>
-                    <option value="teachers">Teachers</option>
+                    <option value="beginners1">Beginners1</option>
+                    <option value="beginners2">Beginners2</option>
+                    <option value="primary1">Primary1</option>
+                    <option value="primary2">Primary2</option>
+                    <option value="junior1">Junior1</option>
+                    <option value="junior2">Junior2</option>
+                    <option value="intermediate1">Intermediate1</option>
+                    <option value="intermediate2">Intermediate2</option>
+                    <option value="senior1">Senior1</option>
+                    <option value="senior2">Senior2</option>
+                    <option value="teachers1">Teachers1</option>
+                    <option value="teachers2">Teachers2</option>
                 </select>
             </div>
             <input type="text" id="student-name-input" placeholder="Enter student name..." style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1em; margin-bottom: 10px; box-sizing: border-box;">
