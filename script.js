@@ -676,15 +676,34 @@ function normalizeStudentName(name) {
 
 function getAttendanceSheetColumnLayout(headerRow = []) {
     const normalizedHeader = (headerRow || []).map(value => normalizeStudentName(value).toLowerCase());
-    const hasGenderColumn = normalizedHeader[1] === 'gender';
-    const dateStartIndex = hasGenderColumn ? 2 : 1;
+    const headerMap = buildHeaderIndexMap(headerRow);
+
+    const studentIndex = headerMap.has('student name')
+        ? headerMap.get('student name')
+        : headerMap.has('student')
+            ? headerMap.get('student')
+            : 0;
+
+    const genderIndex = headerMap.has('gender')
+        ? headerMap.get('gender')
+        : normalizedHeader[1] === 'gender'
+            ? 1
+            : -1;
+
+    const groupIndex = headerMap.has('group') ? headerMap.get('group') : -1;
+    const pointsIndex = headerMap.has('points') ? headerMap.get('points') : -1;
+    const hasGenderColumn = genderIndex >= 0;
+    const dateStartIndex = hasGenderColumn ? genderIndex + 1 : studentIndex + 1;
     const dateCount = getAttendanceDateConfigs().length;
 
     return {
+        studentIndex,
         hasGenderColumn,
+        genderIndex,
         dateStartIndex,
-        groupIndex: dateStartIndex + dateCount,
-        pointsIndex: dateStartIndex + dateCount + 1
+        dateCount,
+        groupIndex,
+        pointsIndex
     };
 }
 
@@ -774,14 +793,14 @@ function sheetValuesToAttendanceGrid(values) {
 
     const firstRow = values[0] || [];
     const dateConfigs = getAttendanceDateConfigs();
-    const dateKeys = dateConfigs.map(config => config.key);
+    const normalizedHeader = (firstRow || []).map(value => normalizeStudentName(value).toLowerCase());
 
     if ((firstRow[0] || '').toString().trim().toLowerCase() === 'date') {
         const gridMap = new Map();
         for (let i = 1; i < values.length; i++) {
             const row = values[i] || [];
             const dateLabel = row[0];
-            const studentName = normalizeStudentName(row[1]);
+            const studentName = normalizeStudentName(row[1] || row[2]);
             const status = row[2] || '';
             if (!studentName) continue;
 
@@ -802,29 +821,30 @@ function sheetValuesToAttendanceGrid(values) {
     }
 
     const layout = getAttendanceSheetColumnLayout(firstRow);
-    
-    // Determine if first row is actually a header row
     const isHeaderRow = firstRow.some(cell => {
         const normalized = normalizeStudentName(cell).toLowerCase();
-        return normalized === 'student name' || normalized === 'gender' || 
-               getAttendanceDateConfigs().some(config => config.label.toLowerCase() === normalized || config.key === normalized) ||
+        return normalized === 'student name' || normalized === 'student' || normalized === 'gender' ||
+               dateConfigs.some(config => config.label.toLowerCase() === normalized || config.key === normalized) ||
                normalized === 'group' || normalized === 'points';
     });
-    
+
     const dataStartIndex = isHeaderRow ? 1 : 0;
-    const matchingDates = [];
-    for (let i = 0; i < dateConfigs.length; i++) {
-        const headerValue = normalizeStudentName(firstRow[layout.dateStartIndex + i]);
-        const matched = dateConfigs.find(config => config.label === headerValue || config.key === headerValue);
-        if (matched) {
-            matchingDates.push({ config: matched, columnIndex: layout.dateStartIndex + i });
+    const dateColumns = dateConfigs.map((config, index) => {
+        const expectedValues = [config.label.toLowerCase(), config.key.toLowerCase()];
+        let matchedIndex = normalizedHeader.findIndex((value, idx) => expectedValues.includes(value) && idx !== layout.studentIndex && idx !== layout.genderIndex && idx !== layout.groupIndex && idx !== layout.pointsIndex);
+        if (matchedIndex < 0) {
+            matchedIndex = layout.dateStartIndex + index;
         }
-    }
+        return { config, columnIndex: matchedIndex };
+    });
+
+    const groupIndex = layout.groupIndex >= 0 ? layout.groupIndex : layout.dateStartIndex + dateConfigs.length;
+    const pointsIndex = layout.pointsIndex >= 0 ? layout.pointsIndex : groupIndex + 1;
 
     const rows = [];
     for (let i = dataStartIndex; i < values.length; i++) {
         const row = values[i] || [];
-        const studentName = normalizeStudentName(row[0]);
+        const studentName = normalizeStudentName(row[layout.studentIndex] || row[0] || row[1] || row[2]);
         if (!studentName) continue;
 
         const attendance = {};
@@ -832,14 +852,15 @@ function sheetValuesToAttendanceGrid(values) {
             attendance[config.key] = '';
         });
 
-        matchingDates.forEach(({ config, columnIndex }) => {
+        dateColumns.forEach(({ config, columnIndex }) => {
             attendance[config.key] = row[columnIndex] || '';
         });
 
-        const group = row[layout.groupIndex] || '';
-        const points = normalizePointsValue(row[layout.pointsIndex]);
+        const gender = layout.hasGenderColumn ? (row[layout.genderIndex] || '') : '';
+        const group = row[groupIndex] || '';
+        const points = normalizePointsValue(row[pointsIndex]);
 
-        rows.push({ name: studentName, gender: layout.hasGenderColumn ? (row[1] || '') : '', attendance, group: group || '', points });
+        rows.push({ name: studentName, gender, attendance, group: group || '', points });
     }
 
     return rows;
