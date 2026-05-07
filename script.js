@@ -215,6 +215,9 @@ function mergeStudentRewards(remoteStudents, cachedStudents) {
 
 async function getClassStudentRewards(className = currentClass) {
     const normalizedClassName = (className || '').toString().trim().toLowerCase();
+    if (normalizedClassName === 'teachers') {
+        return [];
+    }
     const cachedStudents = getStudentRewardsCache(className);
     const approvedUsers = await fetchApprovedUsersFromSheets();
 
@@ -1175,6 +1178,11 @@ function renderPointsLog(className = currentClass) {
     const pointsLogList = document.getElementById('points-log-list');
     if (!pointsLogList) return;
 
+    if ((className || '').toString().trim().toLowerCase() === 'teachers') {
+        pointsLogList.innerHTML = '<p style="text-align: center; color: #999; padding: 12px;">Points are not tracked for the teachers class.</p>';
+        return;
+    }
+
     const log = getPointsLog(className);
     if (!log || log.length === 0) {
         pointsLogList.innerHTML = '<p style="text-align: center; color: #999; padding: 12px;">No points updates yet.</p>';
@@ -1370,7 +1378,7 @@ window.addEventListener('resize', function() {
     autoApplyLayoutFromViewport();
 });
 
-const CLASS_LIST = ['beginners1', 'beginners2', 'primary1', 'primary2', 'junior1', 'junior2', 'intermediate1', 'intermediate2', 'senior1', 'senior2', 'teachers1', 'teachers2'];
+const CLASS_LIST = ['beginners', 'primary1', 'primary2', 'junior1', 'junior2', 'intermediate1', 'intermediate2', 'senior1', 'senior2', 'teachers'];
 let currentClass = '';
 let currentRole = '';
 let isAdminMode = false;
@@ -1615,7 +1623,9 @@ async function userLogin() {
 
             let chosenClass = user.class || '';
             if (!chosenClass) {
-                chosenClass = currentRole === 'teacher' ? 'teachers' : CLASS_LIST[0];
+                chosenClass = currentRole === 'teacher' || currentRole === 'teacher_view'
+                    ? CLASS_LIST.find(c => c.startsWith('teachers')) || CLASS_LIST[0]
+                    : CLASS_LIST[0];
             }
             currentClass = chosenClass;
             userLoginSection.style.display = 'none';
@@ -1662,7 +1672,7 @@ async function switchClassView() {
     // Teachers' attendance shall not be displayed except to directors
     if (selectedClass.toLowerCase().startsWith('teachers') && currentRole !== 'director') {
         alert('Teachers\' attendance records are only accessible to directors.');
-        document.getElementById('class-view-select').value = currentClass || 'beginners1';
+        document.getElementById('class-view-select').value = currentClass || 'beginners';
         return;
     }
     
@@ -1852,7 +1862,7 @@ async function loadClassData() {
     
     const editable = !['teacher_view', 'student'].includes(currentRole);
     const canAssignGroup = currentRole === 'director';
-    const canAddPoints = currentRole === 'director' || currentRole === 'admin' || currentRole === 'teacher';
+    const canAddPoints = (currentRole === 'director' || currentRole === 'admin') && activeClass !== 'teachers';
     let attendanceGrid = getCurrentAttendanceGrid(activeClass);
     renderAttendanceGrid(attendanceGrid, editable);
 
@@ -2267,6 +2277,7 @@ function setupRoleBasedAccess(userRole, userClass) {
     if (userRole === 'teacher') {
         // Teachers can only mark attendance for their assigned class
         if (classSwitcher) classSwitcher.style.display = 'none';
+        if (classViewSelect) classViewSelect.style.display = 'none';
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'none';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'inline-block';
         if (addStudentBtn) addStudentBtn.style.display = 'inline-block';
@@ -2274,6 +2285,7 @@ function setupRoleBasedAccess(userRole, userClass) {
     } else if (userRole === 'teacher_view') {
         // Teacher View Only - can only view reports for their assigned class
         if (classSwitcher) classSwitcher.style.display = 'none';
+        if (classViewSelect) classViewSelect.style.display = 'none';
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'none';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'none';
         if (addStudentBtn) addStudentBtn.style.display = 'none';
@@ -2281,7 +2293,7 @@ function setupRoleBasedAccess(userRole, userClass) {
     } else if (userRole === 'director') {
         // Directors can view and update attendance for ALL classes
         if (classSwitcher) classSwitcher.style.display = 'none';
-        if (classViewSelect) classViewSelect.value = currentClass || 'beginners1';
+        if (classViewSelect) classViewSelect.value = currentClass || 'beginners';
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'block';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'inline-block';
         if (addStudentBtn) addStudentBtn.style.display = 'inline-block';
@@ -2289,7 +2301,7 @@ function setupRoleBasedAccess(userRole, userClass) {
     } else if (userRole === 'admin') {
         // Admins can view and update attendance for ALL classes
         if (classSwitcher) classSwitcher.style.display = 'block';
-        if (classViewSelect) classViewSelect.value = currentClass || 'beginners1';
+        if (classViewSelect) classViewSelect.value = currentClass || 'beginners';
         if (addStudentClassSelector) addStudentClassSelector.style.display = 'block';
         if (markAttendanceBtn) markAttendanceBtn.style.display = 'inline-block';
         if (addStudentBtn) addStudentBtn.style.display = 'inline-block';
@@ -2534,7 +2546,7 @@ async function loadDashboardData() {
 
         for (const className of CLASS_LIST) {
             // Teachers' attendance shall not be displayed except to directors
-            if (className.toLowerCase() === 'teachers' && currentRole !== 'director') {
+            if (className.toLowerCase().startsWith('teachers') && currentRole !== 'director') {
                 continue;
             }
 
