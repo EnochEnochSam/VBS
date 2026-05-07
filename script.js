@@ -1477,6 +1477,11 @@ function showDashboardTab(tabName) {
     if (pointsPanel) pointsPanel.style.display = dashboardActiveTab === 'points' ? 'block' : 'none';
     if (attendanceTab) attendanceTab.classList.toggle('active', dashboardActiveTab === 'attendance');
     if (pointsTab) pointsTab.classList.toggle('active', dashboardActiveTab === 'points');
+    
+    // Hide attendance report section when switching tabs
+    if (attendanceReportSection) attendanceReportSection.style.display = 'none';
+    // Show class section when on attendance tab
+    if (classSection) classSection.style.display = dashboardActiveTab === 'attendance' ? 'block' : 'none';
 }
 
 function backToHome() {
