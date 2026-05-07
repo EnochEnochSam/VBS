@@ -1233,8 +1233,8 @@ function getDateRangeStatus() {
 }
 
 // DOM elements - will be initialized after DOM loads
-let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, studentRewardsSection, studentRewardsList, attendanceReportSection, registrationSection, dashboardSection, addPointsSection;
-let homeGoogleStatus, homeActionButtons, homeGoogleUser, registrationGoogleUser, userGoogleAccount, topRightConnectBtn, topRightLoginBtn, topRightLogoutBtn;
+let loginSection, adminLoginSection, userLoginSection, adminSection, classSection, classTitle, attendanceList, studentRewardsSection, studentRewardsList, attendanceReportSection, dashboardSection, addPointsSection;
+let homeGoogleStatus, homeActionButtons, homeGoogleUser, userGoogleAccount, topRightConnectBtn, topRightLoginBtn, topRightLogoutBtn;
 
 document.addEventListener('DOMContentLoaded', function() {
     clearLegacyOperationalStorage();
@@ -1242,7 +1242,6 @@ document.addEventListener('DOMContentLoaded', function() {
     loginSection = document.getElementById('login-section');
     adminLoginSection = document.getElementById('admin-login-section');
     userLoginSection = document.getElementById('user-login-section');
-    registrationSection = document.getElementById('registration-section');
     dashboardSection = document.getElementById('dashboard-section');
     adminSection = document.getElementById('admin-section');
     classSection = document.getElementById('class-section');
@@ -1256,7 +1255,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize home page elements
     homeGoogleStatus = document.getElementById('home-google-status');
     homeGoogleUser = document.getElementById('home-google-user');
-    registrationGoogleUser = document.getElementById('registration-google-user');
     userGoogleAccount = document.getElementById('user-google-account');
     homeActionButtons = document.querySelector('#login-section > div:last-child'); // The buttons container
     topRightConnectBtn = document.getElementById('top-right-connect-btn');
@@ -1430,8 +1428,7 @@ async function openAttendanceDestinationForCurrentUser() {
     if (currentRole === 'director') {
         adminSection.style.display = 'block';
         isAdminMode = true;
-        showAdminTab('requests');
-        await loadRegistrationRequests();
+        showAdminTab('class');
         updateGoogleStatus();
         return;
     }
@@ -1442,27 +1439,6 @@ async function openAttendanceDestinationForCurrentUser() {
     setupRoleBasedAccess(currentRole, currentUser?.class);
     await loadClassData();
     updateGoogleStatus();
-}
-
-function showRegistration() {
-    loginSection.style.display = 'none';
-    registrationSection.style.display = 'block';
-    updateGoogleStatus();
-}
-
-function updateClassRequirement() {
-    const role = document.getElementById('reg-role').value;
-    const classSelect = document.getElementById('reg-class');
-    const classLabel = document.getElementById('reg-class-label');
-    
-    if (role === 'director') {
-        classSelect.required = false;
-        classSelect.value = '';
-        classLabel.textContent = 'Class (optional for directors - they can access all classes):';
-    } else {
-        classSelect.required = true;
-        classLabel.textContent = 'Class (required):';
-    }
 }
 
 function showDashboard() {
@@ -1489,7 +1465,6 @@ function showDashboardTab(tabName) {
 
 function backToHome() {
     pendingPostLoginAction = 'home';
-    registrationSection.style.display = 'none';
     userLoginSection.style.display = 'none';
     dashboardSection.style.display = 'none';
     adminLoginSection.style.display = 'none';
@@ -1507,74 +1482,18 @@ function connectGoogle() {
     handleAuthClick();
 }
 
-async function submitRegistration(event) {
-    if (event && typeof event.preventDefault === 'function') event.preventDefault();
-    console.log('Registration form submitted');
-
-    const fullName = document.getElementById('reg-full-name').value.trim();
-    const role = document.getElementById('reg-role').value;
-    const className = document.getElementById('reg-class').value;
-    const gmail = currentGoogleUser?.email || '';
-
-    if (!currentGoogleUser || !gmail) {
-        alert('❌ Please connect Google first.');
-        return;
-    }
-
-    if (!fullName || !role) {
-        alert('❌ Please fill in all required fields.');
-        return;
-    }
-
-    // Class is required for students, teachers, and teacher_view
-    if (role !== 'director' && !className) {
-        alert('❌ Please select a class.');
-        return;
-    }
-
-    const registrationData = {
-        fullName,
-        role,
-        class: className,
-        gmail,
-        googleName: currentGoogleUser?.name || '',
-        password: '',
-        status: 'pending',
-        timestamp: new Date().toLocaleString()
-    };
-
-    if (!googleInitialized || !googleAuthToken) {
-        alert('❌ Google Sheets is required to submit registration. Please connect Google first.');
-        return;
-    }
-
-    const saveResult = await saveRegistrationToGoogleSheets(registrationData);
-    if (saveResult.success) {
-        alert('✅ Registration submitted! Your admin will review and approve your request soon.');
-        document.querySelector('#registration-section form').reset();
-        backToHome();
-    } else {
-        alert(`❌ Registration could not be saved to Google Sheets: ${saveResult.error}. No local copy was stored.`);
-    }
-}
-
 function showAdminTab(tab) {
-    document.getElementById('admin-requests-section').style.display = tab === 'requests' ? 'block' : 'none';
     document.getElementById('admin-class-section').style.display = tab === 'class' ? 'block' : 'none';
 
-    const tabs = ['admin-tab-requests', 'admin-tab-class'];
+    const tabs = ['admin-tab-class'];
     tabs.forEach(t => {
         const btn = document.getElementById(t);
         if (btn) btn.style.opacity = '0.7';
     });
     
-    const activeTab = ['admin-tab-requests', 'admin-tab-class'][['requests', 'class'].indexOf(tab)];
+    const activeTab = 'admin-tab-class';
     if (document.getElementById(activeTab)) {
         document.getElementById(activeTab).style.opacity = '1';
-    }
-
-    if (tab === 'requests') {
-        loadRegistrationRequests();
     }
 }
 
@@ -1582,7 +1501,7 @@ function backToAdminPanel() {
     if (adminSection) {
         adminSection.style.display = 'block';
     }
-    showAdminTab('requests');
+    showAdminTab('class');
 }
 
 function normalizeHeaderName(value) {
@@ -1628,242 +1547,6 @@ async function getSheetRows(sheetName) {
     return response.result.values || [];
 }
 
-async function loadRegistrationRequests() {
-    if (!googleInitialized || !googleAuthToken) {
-        document.getElementById('registration-requests-list').innerHTML = '<p style="color: red;">❌ Google not connected. Please connect to Google first.</p>';
-        return;
-    }
-
-    try {
-        const rows = await getSheetRows('Registrations');
-        if (rows.length === 0) {
-            document.getElementById('registration-requests-list').innerHTML = '<p style="text-align: center; color: #999;">No pending registration requests</p>';
-            return;
-        }
-
-        const headerIsPresent = detectHeaderRow(rows[0], ['full name', 'role', 'gmail', 'status']);
-        const headerRow = headerIsPresent ? rows[0] : [];
-        const headerMap = buildHeaderIndexMap(headerRow);
-
-        const idxFullName = resolveFieldIndex('full name', headerMap, ['fullname', 'name'], 0);
-        const idxRole = resolveFieldIndex('role', headerMap, [], 1);
-        const idxGmail = resolveFieldIndex('gmail', headerMap, ['email'], 2);
-        const idxClass = resolveFieldIndex('class', headerMap, ['class name'], 3);
-        const idxStatus = resolveFieldIndex('status', headerMap, ['approval status'], 5);
-
-        const startRow = headerIsPresent ? 1 : 0;
-
-        let html = '';
-        for (let i = startRow; i < rows.length; i++) {
-            const row = rows[i];
-            if (!row[idxFullName]) continue;
-
-            const fullName = row[idxFullName];
-            const role = row[idxRole];
-            const gmail = row[idxGmail];
-            const className = row[idxClass] || 'N/A';
-            const status = (row[idxStatus] || '').toString().trim().toLowerCase();
-            const rowIndex = i;
-
-            if (status === 'pending') {
-                html += `
-                    <div style="background: white; padding: 12px; margin-bottom: 10px; border-radius: 6px; border-left: 4px solid #f39c12;">
-                        <p style="margin: 5px 0;"><strong>Name:</strong> ${fullName}</p>
-                        <p style="margin: 5px 0;"><strong>Role:</strong> ${role}</p>
-                        <p style="margin: 5px 0;"><strong>Gmail:</strong> ${gmail}</p>
-                        <p style="margin: 5px 0;"><strong>Class:</strong> ${className}</p>
-                        <p style="margin: 5px 0;"><strong>Status:</strong> <span style="color: #f39c12; font-weight: bold;">PENDING</span></p>
-                        <div style="display: flex; gap: 10px; margin-top: 10px;">
-                            <button onclick="(async () => await approveRegistration(${rowIndex}))()">✅ Approve</button>
-                            <button onclick="(async () => await rejectRegistration(${rowIndex}))()">❌ Reject</button>
-                        </div>
-                    </div>
-                `;
-            }
-        }
-
-        if (html === '') {
-            document.getElementById('registration-requests-list').innerHTML = '<p style="text-align: center; color: #999;">No pending registration requests</p>';
-            return;
-        }
-
-        document.getElementById('registration-requests-list').innerHTML = html;
-    } catch (error) {
-        console.error('Failed to load registration requests:', error);
-        document.getElementById('registration-requests-list').innerHTML = `<p style="color: red;">❌ Error loading requests: ${error.message}</p>`;
-    }
-}
-
-async function approveRegistration(rowIndex) {
-    if (!googleInitialized || !googleAuthToken) {
-        alert('❌ Google not connected');
-        return;
-    }
-
-    try {
-        const registrationRows = await getSheetRows('Registrations');
-        const headerIsPresent = registrationRows.length > 0 && detectHeaderRow(registrationRows[0], ['full name', 'role', 'gmail', 'status']);
-        const registrationHeader = headerIsPresent ? registrationRows[0] : [];
-        const registrationHeaderMap = buildHeaderIndexMap(registrationHeader);
-
-        const idxFullName = resolveFieldIndex('full name', registrationHeaderMap, ['fullname', 'name'], 0);
-        const idxRole = resolveFieldIndex('role', registrationHeaderMap, [], 1);
-        const idxGmail = resolveFieldIndex('gmail', registrationHeaderMap, ['email'], 2);
-        const idxClass = resolveFieldIndex('class', registrationHeaderMap, ['class name'], 3);
-        const idxPassword = resolveFieldIndex('password', registrationHeaderMap, ['passcode'], 4);
-        const idxStatus = resolveFieldIndex('status', registrationHeaderMap, ['approval status'], 5);
-
-        const row = registrationRows[rowIndex];
-        if (!row) {
-            alert('❌ Could not find registration');
-            return;
-        }
-
-        const fullName = row[idxFullName];
-        const role = row[idxRole];
-        const gmail = row[idxGmail];
-        const className = row[idxClass];
-        const password = row[idxPassword] || '';
-
-        const statusColLetter = columnLetter(idxStatus + 1);
-
-        await gapi.client.sheets.spreadsheets.values.update({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `Registrations!${statusColLetter}${rowIndex + 1}`,
-            valueInputOption: 'RAW',
-            resource: { values: [['approved']] }
-        });
-
-        const approvedRow = [
-            fullName || '',
-            role || '',
-            gmail || '',
-            password || '',
-            className || '',
-            new Date().toLocaleString(),
-            '',
-            0
-        ];
-
-        await gapi.client.sheets.spreadsheets.values.append({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'ApprovedUsers!A:H',
-            valueInputOption: 'RAW',
-            resource: {
-                values: [approvedRow]
-            }
-        });
-
-        alert('✅ Registration approved!');
-        await loadRegistrationRequests();
-    } catch (error) {
-        console.error('Failed to approve registration:', error);
-        alert('❌ Error approving registration: ' + error.message);
-    }
-}
-
-async function rejectRegistration(rowIndex) {
-    if (!googleInitialized || !googleAuthToken) {
-        alert('❌ Google not connected');
-        return;
-    }
-
-    try {
-        const registrationRows = await getSheetRows('Registrations');
-        const headerIsPresent = registrationRows.length > 0 && detectHeaderRow(registrationRows[0], ['full name', 'role', 'gmail', 'status']);
-        const registrationHeader = headerIsPresent ? registrationRows[0] : [];
-        const registrationHeaderMap = buildHeaderIndexMap(registrationHeader);
-        const idxStatus = resolveFieldIndex('status', registrationHeaderMap, ['approval status'], 5);
-        const statusColLetter = columnLetter(idxStatus + 1);
-
-        await gapi.client.sheets.spreadsheets.values.update({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `Registrations!${statusColLetter}${rowIndex + 1}`,
-            valueInputOption: 'RAW',
-            resource: { values: [['rejected']] }
-        });
-
-        alert('✅ Registration rejected');
-        await loadRegistrationRequests();
-    } catch (error) {
-        console.error('Failed to reject registration:', error);
-        alert('❌ Error rejecting registration: ' + error.message);
-    }
-}
-
-async function saveRegistrationToGoogleSheets(registrationData) {
-    if (!googleInitialized || !googleAuthToken) {
-        return {
-            success: false,
-            error: 'Google not connected. Please click Connect Google first.'
-        };
-    }
-
-    try {
-        const registrationRows = await getSheetRows('Registrations');
-        const headerIsPresent = registrationRows.length > 0 && detectHeaderRow(registrationRows[0], ['full name', 'role', 'gmail', 'status']);
-        const registrationHeader = headerIsPresent ? registrationRows[0] : [];
-        const registrationHeaderMap = buildHeaderIndexMap(registrationHeader);
-
-        const idxFullName = resolveFieldIndex('full name', registrationHeaderMap, ['fullname', 'name'], 0);
-        const idxRole = resolveFieldIndex('role', registrationHeaderMap, [], 1);
-        const idxGmail = resolveFieldIndex('gmail', registrationHeaderMap, ['email'], 2);
-        const idxClass = resolveFieldIndex('class', registrationHeaderMap, ['class name'], 3);
-        const idxPassword = resolveFieldIndex('password', registrationHeaderMap, ['passcode'], 4);
-        const idxStatus = resolveFieldIndex('status', registrationHeaderMap, ['approval status'], 5);
-        const idxTimestamp = resolveFieldIndex('timestamp', registrationHeaderMap, ['created at', 'submitted at'], 6);
-
-        const maxIndex = Math.max(idxFullName, idxRole, idxGmail, idxClass, idxPassword, idxStatus, idxTimestamp);
-        const appendRow = Array(maxIndex + 1).fill('');
-        appendRow[idxFullName] = registrationData.fullName;
-        appendRow[idxRole] = registrationData.role;
-        appendRow[idxGmail] = registrationData.gmail;
-        appendRow[idxClass] = registrationData.class;
-        appendRow[idxPassword] = registrationData.password;
-        appendRow[idxStatus] = registrationData.status;
-        appendRow[idxTimestamp] = registrationData.timestamp;
-
-        await gapi.client.sheets.spreadsheets.values.append({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: 'Registrations!A:Z',
-            valueInputOption: 'RAW',
-            resource: {
-                values: [appendRow]
-            }
-        });
-
-        console.log('Registration saved to Google Sheets');
-        return { success: true, error: '' };
-    } catch (error) {
-        console.error('Failed to save registration:', error);
-        const googleError = error?.result?.error?.message || error?.message || 'Unknown Google Sheets error';
-        return {
-            success: false,
-            error: googleError
-        };
-    }
-}
-
-function getPendingRegistrations() {
-    return [];
-}
-
-function savePendingRegistrations(pending) {
-    return pending;
-}
-
-function addPendingRegistration(registrationData) {
-    console.log('Pending registrations queue removed; direct Google Sheets save is required.', registrationData);
-}
-
-function removePendingRegistration(registrationData) {
-    console.log('Pending registrations queue removed; nothing to remove locally.', registrationData);
-}
-
-async function syncPendingRegistrationsToGoogleSheets() {
-    console.log('Pending registrations queue removed; no local sync is performed.');
-}
-
 async function fetchApprovedUserFromSheets(gmail) {
     try {
         if (!googleInitialized || !googleAuthToken) {
@@ -1897,13 +1580,7 @@ async function adminLogin() {
         isAdminMode = true;
         
         // Ensure admin tabs are properly initialized
-        showAdminTab('requests');
-        
-        if (googleInitialized && googleAuthToken) {
-            await loadRegistrationRequests();
-        } else {
-            document.getElementById('registration-requests-list').innerHTML = '<p style="color: #f39c12;">Please connect to Google to manage registration requests</p>';
-        }
+        showAdminTab('class');
         
         document.getElementById('admin-username').value = '';
         document.getElementById('admin-password').value = '';
@@ -1947,8 +1624,7 @@ async function userLogin() {
                 if (currentRole === 'director') {
                     adminSection.style.display = 'block';
                     isAdminMode = true;
-                    showAdminTab('requests');
-                    await loadRegistrationRequests();
+                    showAdminTab('class');
                 } else {
                     classSection.style.display = 'block';
                     updateClassTitle();
@@ -2038,9 +1714,6 @@ function updateGoogleStatus() {
                 ? `Logged in as ${currentUser.fullName} (${googleLabel})`
                 : `Connected as ${googleLabel}`;
         }
-        if (registrationGoogleUser) {
-            registrationGoogleUser.textContent = `Connected Google account: ${googleLabel}`;
-        }
         if (userGoogleAccount) {
             userGoogleAccount.textContent = currentUser?.fullName
                 ? `Logged in as ${currentUser.fullName} (${googleLabel})`
@@ -2052,9 +1725,6 @@ function updateGoogleStatus() {
         if (homeGoogleUser) {
             homeGoogleUser.style.display = 'none';
             homeGoogleUser.textContent = '';
-        }
-        if (registrationGoogleUser) {
-            registrationGoogleUser.textContent = 'Google account will be used automatically after connecting.';
         }
         if (userGoogleAccount) {
             userGoogleAccount.textContent = message;
@@ -2068,7 +1738,7 @@ function updateGoogleStatus() {
         }
         if (authBtn) authBtn.textContent = '🔓 Disconnect Google';
         if (homeGoogleStatus) {
-            homeGoogleStatus.textContent = `✅ Google connected. Login and registration enabled.`;
+            homeGoogleStatus.textContent = `✅ Google connected. Login enabled.`;
             homeGoogleStatus.style.backgroundColor = '#d4edda';
             homeGoogleStatus.style.color = '#155724';
             homeGoogleStatus.style.border = '1px solid #c3e6cb';
@@ -2088,7 +1758,7 @@ function updateGoogleStatus() {
         }
         if (authBtn) authBtn.textContent = '🔗 Connect Google';
         if (homeGoogleStatus) {
-            homeGoogleStatus.textContent = '⚠️ Connect Google to enable login and registration.';
+            homeGoogleStatus.textContent = '⚠️ Connect Google to enable login.';
             homeGoogleStatus.style.backgroundColor = '#fff3cd';
             homeGoogleStatus.style.color = '#856404';
             homeGoogleStatus.style.border = '1px solid #ffeaa7';
@@ -2132,7 +1802,6 @@ function logoutCurrentSession() {
     isAdminMode = false;
     
     // Hide all sections except login
-    if (registrationSection) registrationSection.style.display = 'none';
     if (userLoginSection) userLoginSection.style.display = 'none';
     if (dashboardSection) dashboardSection.style.display = 'none';
     if (adminLoginSection) adminLoginSection.style.display = 'none';
@@ -2684,7 +2353,6 @@ async function initGoogleAPI() {
                         gapi.client.setToken({access_token: googleAuthToken});
                         currentGoogleUser = await fetchConnectedGoogleUser();
                         updateGoogleStatus();
-                        syncPendingRegistrationsToGoogleSheets();
                     }
                 });
 
