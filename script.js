@@ -1892,11 +1892,6 @@ async function loadClassData() {
     const canAssignGroup = currentRole === 'director';
     const canAddPoints = (currentRole === 'director' || currentRole === 'admin') && activeClass !== 'teachers';
     let attendanceGrid = getCurrentAttendanceGrid(activeClass);
-    renderAttendanceGrid(attendanceGrid, editable);
-
-    const cachedRewards = getStudentRewardsCache(activeClass);
-    renderStudentRewardsTable(cachedRewards, { canAssignGroup, canAddPoints });
-    renderPointsLog(activeClass);
 
     if (googleInitialized && googleAuthToken) {
         try {
@@ -1910,19 +1905,17 @@ async function loadClassData() {
                 attendanceGrid = mergeAttendanceGrid(remoteGrid, activeClass);
                 saveAttendanceGrid(activeClass, attendanceGrid);
                 saveStudentRoster(activeClass, attendanceGrid.map(row => row.name));
-                renderAttendanceGrid(attendanceGrid, editable);
             }
-
-            const remoteRewards = await getClassStudentRewards(activeClass);
-            if (loadToken !== classDataLoadToken || activeClass !== currentClass) {
-                return;
-            }
-            renderStudentRewardsTable(remoteRewards, { canAssignGroup, canAddPoints });
-            renderPointsLog(activeClass);
         } catch (error) {
             console.error('Failed to load Google attendance grid:', error);
         }
     }
+
+    renderAttendanceGrid(attendanceGrid, editable);
+
+    const cachedRewards = getStudentRewardsCache(activeClass);
+    renderStudentRewardsTable(cachedRewards, { canAssignGroup, canAddPoints });
+    renderPointsLog(activeClass);
 
     // Update Google status
     updateGoogleStatus();
@@ -2258,9 +2251,12 @@ async function downloadAttendanceCSV() {
     link.click();
 }
 
-function backToClass() {
+async function backToClass() {
     attendanceReportSection.style.display = 'none';
     classSection.style.display = 'block';
+    if (currentClass) {
+        await loadClassData();
+    }
 }
 
 // Hide/show Teachers options in class selectors based on user role
