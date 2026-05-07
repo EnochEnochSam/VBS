@@ -637,12 +637,54 @@ function getAttendanceRosterKey(className = currentClass) {
     return `${className}-student-roster`;
 }
 
+function loadAttendanceGridFromStorage(className = currentClass) {
+    if (typeof localStorage === 'undefined') {
+        return null;
+    }
+
+    try {
+        const stored = localStorage.getItem(getAttendanceStorageKey(className));
+        if (!stored) {
+            return null;
+        }
+        return JSON.parse(stored);
+    } catch (error) {
+        console.warn('Failed to parse saved attendance grid from localStorage:', error);
+        return null;
+    }
+}
+
+function saveAttendanceGridToStorage(className = currentClass, grid) {
+    if (typeof localStorage === 'undefined') {
+        return;
+    }
+
+    try {
+        localStorage.setItem(getAttendanceStorageKey(className), JSON.stringify(grid || []));
+    } catch (error) {
+        console.warn('Failed to save attendance grid to localStorage:', error);
+    }
+}
+
 function getAttendanceGrid(className = currentClass) {
-    return cloneDeep(attendanceGridMemory.get(getAttendanceStorageKey(className)) || []);
+    const storageKey = getAttendanceStorageKey(className);
+    if (attendanceGridMemory.has(storageKey)) {
+        return cloneDeep(attendanceGridMemory.get(storageKey));
+    }
+
+    const storedGrid = loadAttendanceGridFromStorage(className);
+    if (Array.isArray(storedGrid)) {
+        attendanceGridMemory.set(storageKey, cloneDeep(storedGrid));
+        return cloneDeep(storedGrid);
+    }
+
+    return cloneDeep([]);
 }
 
 function saveAttendanceGrid(className, grid) {
-    attendanceGridMemory.set(getAttendanceStorageKey(className), cloneDeep(grid || []));
+    const storageKey = getAttendanceStorageKey(className);
+    attendanceGridMemory.set(storageKey, cloneDeep(grid || []));
+    saveAttendanceGridToStorage(className, grid || []);
 }
 
 function getStudentRoster(className = currentClass) {
