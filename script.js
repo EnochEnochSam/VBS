@@ -629,6 +629,33 @@ function getAttendanceSheetName(className = currentClass) {
     return className.charAt(0).toUpperCase() + className.slice(1);
 }
 
+function getAttendanceSheetNameCandidates(className = currentClass) {
+    const normalized = (className || '').toString().trim();
+    if (!normalized) {
+        return [];
+    }
+
+    const candidates = [];
+    const addCandidate = value => {
+        const candidate = (value || '').toString().trim();
+        if (candidate && !candidates.includes(candidate)) {
+            candidates.push(candidate);
+        }
+    };
+
+    const toTitleCase = value => (value || '').toString().replace(/\b\w/g, char => char.toUpperCase());
+
+    addCandidate(normalized);
+    addCandidate(getAttendanceSheetName(normalized));
+    const spaced = normalized.replace(/[_-]+/g, ' ').replace(/([a-zA-Z])(\d)/g, '$1 $2');
+    addCandidate(spaced);
+    addCandidate(toTitleCase(spaced));
+    addCandidate(normalized.replace(/([a-z])([A-Z])/g, '$1 $2'));
+    addCandidate(toTitleCase(normalized.replace(/([a-z])([A-Z])/g, '$1 $2')));
+
+    return candidates;
+}
+
 function getAttendanceStorageKey(className = currentClass) {
     return `${className}-attendance-grid`;
 }
@@ -2372,36 +2399,32 @@ function filterTeachersFromClassSelectors(userRole) {
     try {
         console.log('filterTeachersFromClassSelectors called with role:', userRole);
         const classViewSelect = document.getElementById('class-view-select');
-        const addStudentClassSelector = document.getElementById('add-student-class-selector');
+        const addStudentClassSelect = document.getElementById('add-student-class-select')
+            || document.querySelector('#add-student-class-selector select');
 
         console.log('classViewSelect:', classViewSelect);
-        console.log('addStudentClassSelector:', addStudentClassSelector);
+        console.log('addStudentClassSelect:', addStudentClassSelect);
 
-        [classViewSelect, addStudentClassSelector].forEach(selector => {
+        [classViewSelect, addStudentClassSelect].forEach(selector => {
             console.log('Processing selector:', selector ? selector.id : 'null');
             if (!selector) {
                 console.log('Selector is null');
                 return;
             }
-            console.log('Selector options:', selector.options);
-            if (!selector.options || selector.options.length === 0) {
+            const options = Array.from(selector.options || []);
+            console.log('Selector options:', options.length);
+            if (options.length === 0) {
                 console.log('Selector has no options or options is undefined');
                 return;
             }
             try {
-                // Convert HTMLCollection to array safely
-                const optionsArray = [];
-                for (let i = 0; i < selector.options.length; i++) {
-                    optionsArray.push(selector.options[i]);
-                }
-                const teachersOptions = optionsArray.filter(opt => opt && opt.value && opt.value.startsWith('teachers'));
+                const teachersOptions = options.filter(opt => opt && opt.value && opt.value.startsWith('teachers'));
                 console.log('Found teachers options:', teachersOptions.length);
                 teachersOptions.forEach(option => {
-                    if (userRole === 'director' || userRole === 'admin') {
-                        option.style.display = 'block';
-                    } else {
-                        option.style.display = 'none';
-                    }
+                    const canSeeTeachers = userRole === 'director' || userRole === 'admin';
+                    option.hidden = !canSeeTeachers;
+                    option.disabled = !canSeeTeachers;
+                    option.style.display = canSeeTeachers ? '' : 'none';
                 });
             } catch (error) {
                 console.error('Error processing selector options:', error);
@@ -2578,30 +2601,41 @@ async function saveAttendanceToGoogleSheets(classData, className = currentClass)
     }
 
     try {
-        const sheetName = getAttendanceSheetName((className || '').toString().trim());
         const values = attendanceGridToSheetValues(classData);
 
-        console.log('Saving attendance to Sheets', { sheetName, rows: values.length });
-        if (statusElSave) statusElSave.textContent = `Saving to sheet ${sheetName}...`;
+        const sheetNames = getAttendanceSheetNameCandidates(className);
+        let lastError = null;
 
-        // Clear existing sheet range before writing full table
-        await gapi.client.sheets.spreadsheets.values.clear({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `${sheetName}!A:Z`
-        });
+        for (const sheetName of sheetNames) {
+            try {
+                console.log('Saving attendance to Sheets', { sheetName, rows: values.length });
+                if (statusElSave) statusElSave.textContent = `Saving to sheet ${sheetName}...`;
 
-        const response = await gapi.client.sheets.spreadsheets.values.update({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `${sheetName}!A1`,
-            valueInputOption: 'RAW',
-            resource: {
-                values
+                // Clear existing sheet range before writing full table
+                await gapi.client.sheets.spreadsheets.values.clear({
+                    spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                    range: `${sheetName}!A:Z`
+                });
+
+                const response = await gapi.client.sheets.spreadsheets.values.update({
+                    spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                    range: `${sheetName}!A1`,
+                    valueInputOption: 'RAW',
+                    resource: {
+                        values
+                    }
+                });
+
+                console.log('Data saved to Google Sheets:', response);
+                try { if (statusElSave) statusElSave.textContent = '✅ Saved to Google Sheets'; } catch (e) {}
+                return true;
+            } catch (sheetError) {
+                lastError = sheetError;
+                console.warn('Failed to save to sheet candidate:', sheetName, sheetError);
             }
-        });
+        }
 
-        console.log('Data saved to Google Sheets:', response);
-        try { if (statusElSave) statusElSave.textContent = '✅ Saved to Google Sheets'; } catch (e) {}
-        return true;
+        throw lastError || new Error('Unable to save attendance to any sheet candidate');
     } catch (error) {
         console.error('Failed to save to Google Sheets:', error);
         const googleError = error?.result?.error?.message || error?.message || JSON.stringify(error);
@@ -2618,24 +2652,35 @@ async function fetchAttendanceFromGoogleSheets(className = currentClass) {
     }
 
     try {
-        const sheetName = getAttendanceSheetName(className);
-        console.log('Fetching attendance from sheet:', sheetName, 'for class:', className);
-        
-        const response = await gapi.client.sheets.spreadsheets.values.get({
-            spreadsheetId: GOOGLE_SPREADSHEET_ID,
-            range: `${sheetName}!A:Z`
-        });
+        const sheetNames = getAttendanceSheetNameCandidates(className);
 
-        const values = response.result.values;
-        console.log('Raw sheet data for', sheetName, ':', values);
-        if (!values || values.length === 0) {
-            console.log('No data found in Google Sheets for', sheetName);
-            return null;
+        for (const sheetName of sheetNames) {
+            console.log('Fetching attendance from sheet:', sheetName, 'for class:', className);
+
+            try {
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                    range: `${sheetName}!A:Z`
+                });
+
+                const values = response.result.values;
+                console.log('Raw sheet data for', sheetName, ':', values);
+                if (!values || values.length === 0) {
+                    console.log('No data found in Google Sheets for', sheetName);
+                    continue;
+                }
+
+                const attendanceGrid = sheetValuesToAttendanceGrid(values);
+                console.log('Processed attendance grid from Google Sheets:', attendanceGrid);
+                if (attendanceGrid.length > 0) {
+                    return attendanceGrid;
+                }
+            } catch (sheetError) {
+                console.warn('Failed to fetch attendance from sheet candidate:', sheetName, sheetError);
+            }
         }
 
-        const attendanceGrid = sheetValuesToAttendanceGrid(values);
-        console.log('Processed attendance grid from Google Sheets:', attendanceGrid);
-        return attendanceGrid;
+        return null;
     } catch (error) {
         console.error('Failed to fetch from Google Sheets for', className, ':', error);
         return null;
