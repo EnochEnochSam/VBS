@@ -2389,8 +2389,16 @@ function filterTeachersFromClassSelectors(userRole) {
                 return;
             }
             try {
-                const teachersOptions = Array.from(selector.options).filter(opt => opt && opt.value && opt.value.startsWith('teachers'));
+                // Convert HTMLCollection to array safely
+                const optionsArray = [];
+                for (let i = 0; i < selector.options.length; i++) {
+                    optionsArray.push(selector.options[i]);
+                }
+                const teachersOptions = optionsArray.filter(opt => opt && opt.value && opt.value.startsWith('teachers'));
                 console.log('Found teachers options:', teachersOptions.length);
+                teachersOptions.forEach(option => {
+                    if (userRole === 'director' || userRole === 'admin') {
+                        option.style.display = 'block';
                     } else {
                         option.style.display = 'none';
                     }
