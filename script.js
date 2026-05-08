@@ -1130,6 +1130,12 @@ function renderStudentRewardsTable(students, options = {}) {
     const canAddPoints = !!options.canAddPoints;
     studentRewardsList.innerHTML = '';
 
+    // Hide rewards for teachers class
+    if (currentClass && currentClass.toLowerCase().startsWith('teachers')) {
+        studentRewardsList.innerHTML = '<p style="text-align: center; color: #999; padding: 12px;">Rewards management is not available for this class.</p>';
+        return;
+    }
+
     if (!students || students.length === 0) {
         studentRewardsList.innerHTML = '<p style="text-align: center; color: #999; padding: 12px;">No students found for this class.</p>';
         return;
@@ -1559,8 +1565,6 @@ function showDashboardTab(tabName) {
     
     // Hide attendance report section when switching tabs
     if (attendanceReportSection) attendanceReportSection.style.display = 'none';
-    // Show class section when on attendance tab
-    if (classSection) classSection.style.display = dashboardActiveTab === 'attendance' ? 'block' : 'none';
 }
 
 function backToHome() {
@@ -1955,7 +1959,7 @@ async function loadClassData() {
     const editable = !['teacher_view', 'student'].includes(currentRole);
     const canAssignGroup = currentRole === 'director';
     const canAddPoints = (currentRole === 'director' || currentRole === 'admin') && activeClass !== 'teachers';
-    let attendanceGrid = getCurrentAttendanceGrid(activeClass);
+    let attendanceGrid = [];
 
     if (googleInitialized && googleAuthToken) {
         try {
@@ -1966,13 +1970,18 @@ async function loadClassData() {
             }
 
             if (remoteGrid && remoteGrid.length > 0) {
-                attendanceGrid = mergeAttendanceGrid(remoteGrid, activeClass);
+                attendanceGrid = remoteGrid;
                 saveAttendanceGrid(activeClass, attendanceGrid);
                 saveStudentRoster(activeClass, attendanceGrid.map(row => row.name));
             }
         } catch (error) {
             console.error('Failed to load Google attendance grid:', error);
         }
+    }
+
+    // Fallback to local storage if Google fetch didn't work
+    if (!attendanceGrid || attendanceGrid.length === 0) {
+        attendanceGrid = getCurrentAttendanceGrid(activeClass);
     }
 
     renderAttendanceGrid(attendanceGrid, editable);
@@ -2354,12 +2363,13 @@ function setupRoleBasedAccess(userRole, userClass) {
     filterTeachersFromClassSelectors(userRole);
 
     const canManageRewards = userRole === 'director' || userRole === 'admin' || userRole === 'teacher';
+    const isTeachersClass = userClass && userClass.toLowerCase().startsWith('teachers');
     if (rewardsSection) {
-        rewardsSection.style.display = canManageRewards ? 'block' : 'none';
+        rewardsSection.style.display = (canManageRewards && !isTeachersClass) ? 'block' : 'none';
     }
     const pointsLogSection = document.getElementById('points-log-section');
     if (pointsLogSection) {
-        pointsLogSection.style.display = canManageRewards ? 'block' : 'none';
+        pointsLogSection.style.display = (canManageRewards && !isTeachersClass) ? 'block' : 'none';
     }
 
     if (userRole === 'teacher') {
@@ -2659,9 +2669,12 @@ async function loadDashboardData() {
                     const group = row.group || '';
                     const points = normalizePointsValue(row.points || 0);
 
-                    studentLeaderboard.push({ fullName, className: classLabel, gender, group, points });
-                    if (!groupTotals.has(group)) groupTotals.set(group, 0);
-                    groupTotals.set(group, groupTotals.get(group) + points);
+                    // Exclude teachers class from leaderboard
+                    if (!classLabel.toLowerCase().startsWith('teachers')) {
+                        studentLeaderboard.push({ fullName, className: classLabel, gender, group, points });
+                        if (!groupTotals.has(group)) groupTotals.set(group, 0);
+                        groupTotals.set(group, groupTotals.get(group) + points);
+                    }
 
                     dateConfigs.forEach(config => {
                         if (row.attendance?.[config.key] === 'Present') {
