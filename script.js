@@ -2369,20 +2369,39 @@ async function backToClass() {
 
 // Hide/show Teachers options in class selectors based on user role
 function filterTeachersFromClassSelectors(userRole) {
-    const classViewSelect = document.getElementById('class-view-select');
-    const addStudentClassSelector = document.getElementById('add-student-class-selector');
-    
-    [classViewSelect, addStudentClassSelector].forEach(selector => {
-        if (!selector || !selector.options) return;
-        const teachersOptions = Array.from(selector.options).filter(opt => opt.value.startsWith('teachers'));
-        teachersOptions.forEach(option => {
-            if (userRole === 'director' || userRole === 'admin') {
-                option.style.display = 'block';
-            } else {
-                option.style.display = 'none';
+    try {
+        console.log('filterTeachersFromClassSelectors called with role:', userRole);
+        const classViewSelect = document.getElementById('class-view-select');
+        const addStudentClassSelector = document.getElementById('add-student-class-selector');
+
+        console.log('classViewSelect:', classViewSelect);
+        console.log('addStudentClassSelector:', addStudentClassSelector);
+
+        [classViewSelect, addStudentClassSelector].forEach(selector => {
+            console.log('Processing selector:', selector ? selector.id : 'null');
+            if (!selector) {
+                console.log('Selector is null');
+                return;
+            }
+            console.log('Selector options:', selector.options);
+            if (!selector.options || selector.options.length === 0) {
+                console.log('Selector has no options or options is undefined');
+                return;
+            }
+            try {
+                const teachersOptions = Array.from(selector.options).filter(opt => opt && opt.value && opt.value.startsWith('teachers'));
+                console.log('Found teachers options:', teachersOptions.length);
+                    } else {
+                        option.style.display = 'none';
+                    }
+                });
+            } catch (error) {
+                console.error('Error processing selector options:', error);
             }
         });
-    });
+    } catch (error) {
+        console.error('Error in filterTeachersFromClassSelectors:', error);
+    }
 }
 
 function setupRoleBasedAccess(userRole, userClass) {
