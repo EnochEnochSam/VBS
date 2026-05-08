@@ -409,7 +409,7 @@ async function updateApprovedUserRewards(gmail, updates = {}) {
                 spreadsheetId: GOOGLE_SPREADSHEET_ID,
                 range: `${sheetName}!A:Z`,
                 valueInputOption: 'RAW',
-                resource: { values: [[fullName || '', ...emptyDates, groupVal, String(pointsVal)]] }
+                resource: { values: [[fullName || '', '', ...emptyDates, groupVal, String(pointsVal)]] }
             });
             // Update local cache/grid
             const localGrid = getAttendanceGrid(targetClass) || [];
@@ -428,7 +428,7 @@ async function updateApprovedUserRewards(gmail, updates = {}) {
 
         // Compute column letters for Group and Points
         const dateCount = dateConfigs.length;
-        const groupColIndex = 1 + dateCount + 1; // 1-based: A=1
+        const groupColIndex = 3 + dateCount; // A(name) + B(gender) + dates + group
         const pointsColIndex = groupColIndex + 1;
         const groupCol = columnLetter(groupColIndex);
         const pointsCol = columnLetter(pointsColIndex);
@@ -2164,7 +2164,7 @@ async function updateClassStudentRewards(className, studentName, updates = {}, g
             });
         } else {
             const dateCount = dateConfigs.length;
-            const groupColIndex = 2 + dateCount;
+            const groupColIndex = 3 + dateCount; // A(name) + B(gender) + dates + group
             const pointsColIndex = groupColIndex + 1;
             await gapi.client.sheets.spreadsheets.values.update({
                 spreadsheetId: GOOGLE_SPREADSHEET_ID,
@@ -2863,7 +2863,7 @@ async function ensureClassSheetRewardsMigrated() {
 
             const dateConfigs = getAttendanceDateConfigs();
             const emptyDates = dateConfigs.map(() => '');
-            const groupColIndex = 2 + dateConfigs.length; // A + Gender + dates + Group
+            const groupColIndex = 3 + dateConfigs.length; // A(name) + B(gender) + dates + group
             const pointsColIndex = groupColIndex + 1;
             const groupCol = columnLetter(groupColIndex);
             const pointsCol = columnLetter(pointsColIndex);
