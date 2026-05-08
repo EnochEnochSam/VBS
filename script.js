@@ -1971,7 +1971,9 @@ async function loadClassData() {
     if (googleInitialized && googleAuthToken) {
         try {
             await ensureClassSheetRewardsMigrated();
+            console.log('Loading class data for:', activeClass);
             const remoteGrid = await fetchAttendanceFromGoogleSheets(activeClass);
+            console.log('Remote grid result for', activeClass, ':', remoteGrid);
             if (loadToken !== classDataLoadToken || activeClass !== currentClass) {
                 return;
             }
@@ -1980,9 +1982,35 @@ async function loadClassData() {
                 attendanceGrid = remoteGrid;
                 saveAttendanceGrid(activeClass, attendanceGrid);
                 saveStudentRoster(activeClass, attendanceGrid.map(row => row.name));
+                console.log('Loaded from Google Sheets:', attendanceGrid.length, 'students');
+            } else {
+                console.log('No data in Google Sheets for', activeClass, '- checking approved users');
+                // If no students in class sheet, load from Approved Users
+                const approvedUsers = await fetchApprovedUsersFromSheets();
+                const classStudents = (approvedUsers || []).filter(user => user.role === 'student' && user.class === activeClass);
+                console.log('Found approved users for', activeClass, ':', classStudents.length);
+                if (classStudents.length > 0 && loadToken === classDataLoadToken && activeClass === currentClass) {
+                    const dateConfigs = getAttendanceDateConfigs();
+                    attendanceGrid = classStudents.map(student => {
+                        const attendance = {};
+                        dateConfigs.forEach(config => {
+                            attendance[config.key] = '';
+                        });
+                        return {
+                            name: student.fullName,
+                            gender: student.gender || '',
+                            attendance,
+                            group: student.group || '',
+                            points: normalizePointsValue(student.points)
+                        };
+                    });
+                    saveAttendanceGrid(activeClass, attendanceGrid);
+                    saveStudentRoster(activeClass, attendanceGrid.map(row => row.name));
+                    console.log('Loaded from approved users:', attendanceGrid.length, 'students');
+                }
             }
         } catch (error) {
-            console.error('Failed to load Google attendance grid:', error);
+            console.error('Failed to load Google attendance grid for', activeClass, ':', error);
         }
     }
 
@@ -2345,7 +2373,7 @@ function filterTeachersFromClassSelectors(userRole) {
     const addStudentClassSelector = document.getElementById('add-student-class-selector');
     
     [classViewSelect, addStudentClassSelector].forEach(selector => {
-        if (!selector) return;
+        if (!selector || !selector.options) return;
         const teachersOptions = Array.from(selector.options).filter(opt => opt.value.startsWith('teachers'));
         teachersOptions.forEach(option => {
             if (userRole === 'director' || userRole === 'admin') {
@@ -2564,6 +2592,7 @@ async function fetchAttendanceFromGoogleSheets(className = currentClass) {
 
     try {
         const sheetName = getAttendanceSheetName(className);
+        console.log('Fetching attendance from sheet:', sheetName, 'for class:', className);
         
         const response = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
@@ -2571,16 +2600,17 @@ async function fetchAttendanceFromGoogleSheets(className = currentClass) {
         });
 
         const values = response.result.values;
+        console.log('Raw sheet data for', sheetName, ':', values);
         if (!values || values.length === 0) {
-            console.log('No data found in Google Sheets');
+            console.log('No data found in Google Sheets for', sheetName);
             return null;
         }
 
         const attendanceGrid = sheetValuesToAttendanceGrid(values);
-        console.log('Fetched attendance grid from Google Sheets:', attendanceGrid);
+        console.log('Processed attendance grid from Google Sheets:', attendanceGrid);
         return attendanceGrid;
     } catch (error) {
-        console.error('Failed to fetch from Google Sheets:', error);
+        console.error('Failed to fetch from Google Sheets for', className, ':', error);
         return null;
     }
 }
