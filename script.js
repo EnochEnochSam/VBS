@@ -1712,7 +1712,13 @@ async function userLogin() {
     // Check approved users from Google Sheets based on Gmail only
 
     try {
+        const allApprovedUsers = await fetchApprovedUsersFromSheets();
+        console.log('All approved users:', allApprovedUsers);
+        console.log('Current Google email:', gmail, 'Lowercase:', gmail.toLowerCase());
+        
         const user = await fetchApprovedUserFromSheets(gmail);
+        console.log('User lookup result:', user);
+        
         if (user) {
             currentUser = user;
             currentRole = user.role;
@@ -1743,6 +1749,7 @@ async function userLogin() {
 
             updateGoogleStatus();
         } else {
+            console.error('User not found in approved users list');
             alert('❌ Invalid credentials or user not approved.');
         }
     } catch (error) {
