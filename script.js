@@ -14,6 +14,7 @@ let classSheetRewardsMigrationPromise = null;
 const attendanceGridMemory = new Map();
 const studentRewardsMemory = new Map();
 const pointsLogMemory = new Map();
+const groupPointsLogMemory = new Map();
 
 function cloneDeep(value) {
     return JSON.parse(JSON.stringify(value));
@@ -2811,6 +2812,31 @@ async function loadDashboardData() {
             }
         }
 
+        // Merge generic group points logged in the GroupPoints sheet (Class, Group, Points, UpdatedBy, Timestamp)
+        try {
+            const gpRows = await getSheetRows('GroupPoints');
+            if (gpRows && gpRows.length > 0) {
+                const headerIsPresentGP = detectHeaderRow(gpRows[0], ['class', 'group', 'points']);
+                const headerRowGP = headerIsPresentGP ? gpRows[0] : [];
+                const headerMapGP = buildHeaderIndexMap(headerRowGP);
+                const idxClassGP = resolveFieldIndex('class', headerMapGP, [], 0);
+                const idxGroupGP = resolveFieldIndex('group', headerMapGP, [], 1);
+                const idxPointsGP = resolveFieldIndex('points', headerMapGP, ['points delta', 'pointsamount'], 2);
+                const startRow = headerIsPresentGP ? 1 : 0;
+                for (let i = startRow; i < gpRows.length; i++) {
+                    const row = gpRows[i] || [];
+                    const gpClass = (row[idxClassGP] || '').toString().trim();
+                    const gpGroup = (row[idxGroupGP] || '').toString().trim();
+                    const gpPoints = normalizePointsValue(row[idxPointsGP]);
+                    if (!gpGroup) continue;
+                    if (!groupTotals.has(gpGroup)) groupTotals.set(gpGroup, 0);
+                    groupTotals.set(gpGroup, groupTotals.get(gpGroup) + gpPoints);
+                }
+            }
+        } catch (err) {
+            console.warn('Failed to load GroupPoints sheet for dashboard aggregation:', err);
+        }
+
         setDashboardText('total-students-count', students);
         setDashboardText('total-teachers-count', teachers);
         setDashboardText('total-directors-count', directors);
@@ -2957,6 +2983,14 @@ function showAddPoints() {
 
     loginSection.style.display = 'none';
     addPointsSection.style.display = 'block';
+    populateAddPointsClassSelector();
+    populateAddPointsGroupSelector();
+    // Ensure default target is student
+    const groupCheck = document.getElementById('add-points-to-group');
+    if (groupCheck) {
+        groupCheck.checked = false;
+        onAddPointsTargetChange({ target: groupCheck });
+    }
     updateAddPointsUI();
 }
 
@@ -2976,6 +3010,35 @@ function populateAddPointsClassSelector() {
         option.textContent = className.charAt(0).toUpperCase() + className.slice(1);
         selector.appendChild(option);
     });
+}
+
+function populateAddPointsGroupSelector() {
+    const selector = document.getElementById('add-points-group');
+    if (!selector) return;
+    // Clear existing options except placeholder
+    while (selector.options.length > 1) selector.remove(1);
+    GROUP_OPTIONS.forEach(group => {
+        const option = document.createElement('option');
+        option.value = group;
+        option.textContent = group;
+        selector.appendChild(option);
+    });
+}
+
+function onAddPointsTargetChange(event) {
+    const checked = event.target.checked;
+    const studentSelect = document.getElementById('add-points-student');
+    const groupSelect = document.getElementById('add-points-group');
+    const groupLabel = document.getElementById('add-points-group-label');
+    if (checked) {
+        studentSelect.style.display = 'none';
+        groupSelect.style.display = 'block';
+        groupLabel.style.display = 'block';
+    } else {
+        studentSelect.style.display = 'block';
+        groupSelect.style.display = 'none';
+        groupLabel.style.display = 'none';
+    }
 }
 
 async function loadStudentsForAddPoints() {
@@ -3012,47 +3075,92 @@ async function loadStudentsForAddPoints() {
 
 async function submitAddPoints(event) {
     if (event && typeof event.preventDefault === 'function') event.preventDefault();
-    
+
     const selectedClass = document.getElementById('add-points-class').value;
+    const addToGroup = document.getElementById('add-points-to-group')?.checked;
     const selectedStudent = document.getElementById('add-points-student').value;
+    const selectedGroup = document.getElementById('add-points-group')?.value;
     const pointsAmount = normalizePointsValue(document.getElementById('add-points-amount').value);
-    
-    if (!selectedClass || !selectedStudent || pointsAmount <= 0) {
-        alert('❌ Please fill in all fields correctly.');
+
+    if (!selectedClass || pointsAmount <= 0) {
+        alert('❌ Please fill in the class and a positive points value.');
         return;
     }
-    
+
+    if (addToGroup && !selectedGroup) {
+        alert('❌ Please select a group to add points to.');
+        return;
+    }
+
+    if (!addToGroup && !selectedStudent) {
+        alert('❌ Please select a student to add points to.');
+        return;
+    }
+
     // Verify user is authorized (teacher or director)
     const userEmail = currentGoogleUser?.email || '';
     try {
         const user = await fetchApprovedUserFromSheets(userEmail);
         const userRole = (user?.role || '').toLowerCase();
-        
+
         if (userRole !== 'director' && userRole !== 'teacher') {
             alert('❌ Only teachers and directors can add points.');
             return;
         }
-        
-        // Get current student data
+
+        const updatedBy = currentUser?.fullName || currentGoogleUser?.name || 'Unknown';
+
+        if (addToGroup) {
+            // Add generic points to a group (not to any student)
+            addGroupPointsLogEntry(selectedClass, selectedGroup, pointsAmount, updatedBy);
+            if (!googleInitialized || !googleAuthToken) {
+                alert('❌ Google Sheets is required to save group points. Please connect Google first.');
+                return;
+            }
+            try {
+                const saved = await appendGroupPointsToSheet(selectedClass, selectedGroup, pointsAmount, updatedBy);
+                if (!saved) {
+                    alert('❌ Could not save group points to Google Sheets. No local copy was stored.');
+                    return;
+                }
+            } catch (err) {
+                console.warn('Failed to update GroupPoints sheet:', err);
+                alert('❌ Could not save group points to Google Sheets. No local copy was stored.');
+                return;
+            }
+
+            // Reset form
+            document.getElementById('add-points-class').value = '';
+            document.getElementById('add-points-amount').value = '';
+            document.getElementById('add-points-group').innerHTML = '<option value="">-- Select Group --</option>';
+            document.getElementById('add-points-to-group').checked = false;
+            onAddPointsTargetChange({ target: document.getElementById('add-points-to-group') });
+
+            alert(`✓ Added ${pointsAmount} points to group ${selectedGroup} of ${selectedClass}!`);
+            refreshDashboardIfVisible();
+            if (googleInitialized && googleAuthToken) await loadDashboardData();
+            return;
+        }
+
+        // Student points flow
         const students = await getClassStudentRewards(selectedClass);
         const student = students.find(s => s.fullName === selectedStudent);
-        
+
         if (!student) {
             alert('❌ Student not found.');
             return;
         }
-        
+
         // Calculate new points
         const oldPoints = normalizePointsValue(student.points || 0);
         const newPoints = oldPoints + pointsAmount;
-        
+
         // Update student points
         student.points = newPoints;
-        
+
         // Log the points addition
-        const updatedBy = currentUser?.fullName || currentGoogleUser?.name || 'Unknown';
         addPointsLogEntry(selectedClass, selectedStudent, pointsAmount, updatedBy);
-        
+
         // Update Google Sheets if available
         if (!googleInitialized || !googleAuthToken) {
             alert('❌ Google Sheets is required to save points. Please connect Google first.');
@@ -3077,15 +3185,15 @@ async function submitAddPoints(event) {
             alert('❌ Could not save points to Google Sheets. No local copy was stored.');
             return;
         }
-        
+
         // Reset form
         document.getElementById('add-points-class').value = '';
         document.getElementById('add-points-student').value = '';
         document.getElementById('add-points-amount').value = '';
         document.getElementById('add-points-student').innerHTML = '<option value="">-- Select Student --</option>';
-        
+
         alert(`✓ Added ${pointsAmount} points to ${selectedStudent}!\nNew total: ${newPoints} points`);
-        
+
         // Refresh dashboard if visible
         refreshDashboardIfVisible();
 
@@ -3093,7 +3201,7 @@ async function submitAddPoints(event) {
         if (googleInitialized && googleAuthToken) {
             await loadDashboardData();
         }
-        
+
     } catch (error) {
         console.error('Failed to add points:', error);
         alert('❌ Error adding points. Please try again.');
@@ -3110,5 +3218,40 @@ function updateAddPointsUI() {
             addPointsGoogleAccount.style.color = '#2e7d32';
             addPointsGoogleAccount.style.borderColor = '#81c784';
         }
+    }
+}
+
+function getGroupPointsLogStorageKey(className = currentClass) {
+    return `${className}-group-points-log`;
+}
+
+function getGroupPointsLog(className = currentClass) {
+    return cloneDeep(groupPointsLogMemory.get(getGroupPointsLogStorageKey(className)) || []);
+}
+
+function saveGroupPointsLog(className, log) {
+    groupPointsLogMemory.set(getGroupPointsLogStorageKey(className), cloneDeep(log || []));
+}
+
+function addGroupPointsLogEntry(className, groupName, pointsDelta, updatedBy) {
+    const key = getGroupPointsLogStorageKey(className);
+    const log = cloneDeep(groupPointsLogMemory.get(key) || []);
+    log.push({ className, groupName, pointsDelta, updatedBy, timestamp: new Date().toLocaleString(), timestampISO: new Date().toISOString() });
+    groupPointsLogMemory.set(key, log);
+}
+
+async function appendGroupPointsToSheet(className, groupName, pointsDelta, updatedBy) {
+    if (!googleInitialized || !googleAuthToken) return false;
+    try {
+        await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `GroupPoints!A:E`,
+            valueInputOption: 'RAW',
+            resource: { values: [[className || '', groupName || '', String(pointsDelta), updatedBy || '', new Date().toISOString()]] }
+        });
+        return true;
+    } catch (err) {
+        console.error('Failed to append group points to sheet:', err);
+        return false;
     }
 }

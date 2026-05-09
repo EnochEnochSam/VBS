@@ -89,6 +89,16 @@
                 <option value="">-- Select Student --</option>
             </select>
 
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <input type="checkbox" id="add-points-to-group" onchange="onAddPointsTargetChange(event)" />
+                <label for="add-points-to-group" style="font-size:0.95rem;">Add points to a <strong>Group</strong> instead of an individual student</label>
+            </div>
+
+            <label for="add-points-group" id="add-points-group-label" style="display: none; margin-bottom: 8px; font-weight: 600;">Select Group:</label>
+            <select id="add-points-group" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 15px; display:none;">
+                <option value="">-- Select Group --</option>
+            </select>
+
             <label for="add-points-amount" style="display: block; margin-bottom: 8px; font-weight: 600;">Points to Add:</label>
             <input type="number" id="add-points-amount" placeholder="Enter points (e.g., 5)" min="1" max="100" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 15px; box-sizing: border-box;" required>
 
