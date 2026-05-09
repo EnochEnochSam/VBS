@@ -3243,6 +3243,8 @@ function addGroupPointsLogEntry(className, groupName, pointsDelta, updatedBy) {
 async function appendGroupPointsToSheet(className, groupName, pointsDelta, updatedBy) {
     if (!googleInitialized || !googleAuthToken) return false;
     try {
+        // Ensure the GroupPoints sheet has a header row
+        await ensureGroupPointsSheetExists();
         await gapi.client.sheets.spreadsheets.values.append({
             spreadsheetId: GOOGLE_SPREADSHEET_ID,
             range: `GroupPoints!A:E`,
@@ -3253,5 +3255,42 @@ async function appendGroupPointsToSheet(className, groupName, pointsDelta, updat
     } catch (err) {
         console.error('Failed to append group points to sheet:', err);
         return false;
+    }
+}
+
+async function ensureGroupPointsSheetExists() {
+    if (!googleInitialized || !googleAuthToken) return false;
+    try {
+        // Check if header exists
+        const resp = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: GOOGLE_SPREADSHEET_ID,
+            range: `GroupPoints!A1:E1`
+        });
+        const values = resp.result.values || [];
+        const header = ['Class', 'Group', 'Points', 'UpdatedBy', 'Timestamp'];
+        if (!values || values.length === 0 || (values[0] || []).length === 0) {
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                range: `GroupPoints!A1:E1`,
+                valueInputOption: 'RAW',
+                resource: { values: [header] }
+            });
+        }
+        return true;
+    } catch (err) {
+        // If sheet not found, try to create header by writing to A1
+        try {
+            const header = ['Class', 'Group', 'Points', 'UpdatedBy', 'Timestamp'];
+            await gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: GOOGLE_SPREADSHEET_ID,
+                range: `GroupPoints!A1:E1`,
+                valueInputOption: 'RAW',
+                resource: { values: [header] }
+            });
+            return true;
+        } catch (e) {
+            console.warn('Could not ensure GroupPoints sheet exists:', e);
+            return false;
+        }
     }
 }
