@@ -86,6 +86,23 @@ function normalizePointsValue(value) {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
+// Smoothly animate numeric counters into an element
+function animateCount(id, target) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const start = Number(el.textContent.toString().replace(/[^0-9.-]+/g, '')) || 0;
+    const end = Number(target) || 0;
+    const duration = 800;
+    const startTime = performance.now();
+    function step(now) {
+        const progress = Math.min((now - startTime) / duration, 1);
+        const value = Math.round(start + (end - start) * (1 - Math.pow(1 - progress, 3)));
+        el.textContent = value;
+        if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+}
+
 function buildStudentRewardKey(student) {
     return (student.gmail || student.fullName || '').toString().trim().toLowerCase();
 }
@@ -2841,6 +2858,16 @@ async function loadDashboardData() {
         setDashboardText('total-teachers-count', teachers);
         setDashboardText('total-directors-count', directors);
         setDashboardText('today-attendance-count', todayAttendance);
+
+        // Populate summary cards with animated counters
+        try {
+            const totalGroupPoints = Array.from(groupTotals.values()).reduce((s, v) => s + (Number(v) || 0), 0);
+            animateCount('summary-students', students);
+            animateCount('summary-present', todayAttendance);
+            animateCount('summary-points', totalGroupPoints);
+        } catch (err) {
+            console.warn('Failed to update summary counters', err);
+        }
 
         renderDashboardAttendanceSummary(attendanceSummaries, dateConfigs);
         renderDashboardPoints(studentLeaderboard, groupTotals);
