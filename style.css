@@ -884,3 +884,25 @@ label {
         font-size: 1.7em;
     }
 }
+
+/* Hero banner image inserted into login header */
+.hero-banner {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto 18px;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.12);
+}
+.hero-banner .hero-img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 220px;
+    object-fit: cover;
+}
+
+@media (max-width: 640px) {
+    .hero-banner { max-height: 160px; }
+    .hero-banner .hero-img { max-height: 160px; }
+}
