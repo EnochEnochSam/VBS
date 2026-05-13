@@ -3082,13 +3082,18 @@ async function submitAddPoints(event) {
     const selectedGroup = document.getElementById('add-points-group')?.value;
     const pointsAmount = normalizePointsValue(document.getElementById('add-points-amount').value);
 
-    if (!selectedClass || pointsAmount <= 0) {
-        alert('❌ Please fill in the class and a positive points value.');
+    if (pointsAmount === 0) {
+        alert('❌ Please enter a non-zero points value.');
         return;
     }
 
     if (addToGroup && !selectedGroup) {
         alert('❌ Please select a group to add points to.');
+        return;
+    }
+
+    if (!addToGroup && !selectedClass) {
+        alert('❌ Please select a class when adding points to a student.');
         return;
     }
 
@@ -3112,13 +3117,15 @@ async function submitAddPoints(event) {
 
         if (addToGroup) {
             // Add generic points to a group (not to any student)
-            addGroupPointsLogEntry(selectedClass, selectedGroup, pointsAmount, updatedBy);
+            // Class is optional for group points since groups are global
+            const groupClassName = selectedClass || '';
+            addGroupPointsLogEntry(groupClassName, selectedGroup, pointsAmount, updatedBy);
             if (!googleInitialized || !googleAuthToken) {
                 alert('❌ Google Sheets is required to save group points. Please connect Google first.');
                 return;
             }
             try {
-                const saved = await appendGroupPointsToSheet(selectedClass, selectedGroup, pointsAmount, updatedBy);
+                const saved = await appendGroupPointsToSheet(groupClassName, selectedGroup, pointsAmount, updatedBy);
                 if (!saved) {
                     alert('❌ Could not save group points to Google Sheets. No local copy was stored.');
                     return;
@@ -3136,7 +3143,7 @@ async function submitAddPoints(event) {
             document.getElementById('add-points-to-group').checked = false;
             onAddPointsTargetChange({ target: document.getElementById('add-points-to-group') });
 
-            alert(`✓ Added ${pointsAmount} points to group ${selectedGroup} of ${selectedClass}!`);
+            alert(`✓ Added ${pointsAmount} points to group ${selectedGroup}!`);
             refreshDashboardIfVisible();
             if (googleInitialized && googleAuthToken) await loadDashboardData();
             return;
