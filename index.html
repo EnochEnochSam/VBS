@@ -17,7 +17,7 @@
 <body>
     <div id="login-section">
         <div class="hero-banner">
-            <img src="assets/vbs-banner.jpg" alt="VBS Banner" class="hero-img" />
+            <img src="assets/vbs-banner.jpg" data-embed-src="assets/vbs-banner.jpg" alt="VBS Banner" class="hero-img" />
         </div>
         <div class="home-header">
             <div>
@@ -332,6 +332,25 @@
         <button onclick="backToHome()" style="background: #999;">← Back to Home</button>
     </div>
 
+    <script>
+        // Convert hero banner to embedded data URI at runtime (reduces repo bloat)
+        (async function embedHeroImage() {
+            try {
+                const img = document.querySelector('.hero-img');
+                if (!img) return;
+                const src = img.dataset.embedSrc || img.getAttribute('src');
+                if (!src) return;
+                const resp = await fetch(src, {cache: 'no-store'});
+                if (!resp.ok) return;
+                const blob = await resp.blob();
+                const reader = new FileReader();
+                reader.onloadend = function () { img.src = reader.result; };
+                reader.readAsDataURL(blob);
+            } catch (err) {
+                console.warn('Failed to embed hero image as data URI:', err);
+            }
+        })();
+    </script>
     <script src="script.js?v=3"></script>
     <!-- Google initialization is handled inside script.js -->
 </body>
