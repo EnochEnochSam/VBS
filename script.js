@@ -561,6 +561,7 @@ function renderDashboardPoints(studentLeaderboard, groupTotals) {
     const topBoysList = document.getElementById('top-boys-students-list');
     const groupPointsList = document.getElementById('group-points-list');
     const groupPointsCards = document.getElementById('group-points-cards');
+    const createTopBadge = rank => rank > 0 && rank <= 3 ? `<span style="display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 8px;border-radius:999px;background:#fff7cc;color:#8a5a00;font-size:0.8em;font-weight:900;vertical-align:middle;">⭐ ${rank}</span>` : '';
 
     const filteredStudents = dashboardSelectedGroup
         ? studentLeaderboard.filter(student => (student.group || '') === dashboardSelectedGroup)
@@ -572,7 +573,7 @@ function renderDashboardPoints(studentLeaderboard, groupTotals) {
         topGirlsList.innerHTML = top10Girls.length ? top10Girls.map((student, index) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
                 <div style="min-width:0">
-                    <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</div>
+                    <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}${createTopBadge(index + 1)}</div>
                     <div style="color:#666;font-size:0.85em;margin-top:4px;">${student.className}${student.group ? ` • ${student.group}` : ''}</div>
                 </div>
                 <div style="font-weight:800;color:#0f172a;margin-left:12px;">${student.points} pts</div>
@@ -586,7 +587,7 @@ function renderDashboardPoints(studentLeaderboard, groupTotals) {
         topBoysList.innerHTML = top10Boys.length ? top10Boys.map((student, index) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
                 <div style="min-width:0">
-                    <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</div>
+                    <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}${createTopBadge(index + 1)}</div>
                     <div style="color:#666;font-size:0.85em;margin-top:4px;">${student.className}${student.group ? ` • ${student.group}` : ''}</div>
                 </div>
                 <div style="font-weight:800;color:#0f172a;margin-left:12px;">${student.points} pts</div>
@@ -594,11 +595,14 @@ function renderDashboardPoints(studentLeaderboard, groupTotals) {
         `).join('') : '<p style="color: #999;">No boys student points available</p>';
     }
 
+    const orderedGroups = [...GROUP_OPTIONS, ...Array.from(groupTotals.keys()).filter(group => !GROUP_OPTIONS.includes(group))];
+    const rankedGroups = [...orderedGroups].sort((a, b) => (groupTotals.get(b) || 0) - (groupTotals.get(a) || 0) || (a || 'Unassigned').localeCompare(b || 'Unassigned'));
+    const topGroupRanks = new Map(rankedGroups.slice(0, 3).map((group, index) => [group, index + 1]));
+
     if (groupPointsList) {
-        const orderedGroups = [...GROUP_OPTIONS, ...Array.from(groupTotals.keys()).filter(group => !GROUP_OPTIONS.includes(group))];
-        groupPointsList.innerHTML = orderedGroups.map(group => `
+        groupPointsList.innerHTML = rankedGroups.map(group => `
             <div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee;">
-                <strong>${group || 'Unassigned'}</strong>
+                <strong>${group || 'Unassigned'}${createTopBadge(topGroupRanks.get(group) || 0)}</strong>
                 <span style="font-weight: 700; color: #2e7d32;">${groupTotals.get(group) || 0} pts</span>
             </div>
         `).join('');
@@ -607,7 +611,7 @@ function renderDashboardPoints(studentLeaderboard, groupTotals) {
     if (groupPointsCards) {
         groupPointsCards.innerHTML = `<div class="group-cards-grid">` + GROUP_OPTIONS.map(group => `
             <div class="group-card" data-group="${(group || '').replace(/"/g, '&quot;')}">
-                <div class="group-name">${group || 'Unassigned'}</div>
+                <div class="group-name">${group || 'Unassigned'}${createTopBadge(topGroupRanks.get(group) || 0)}</div>
                 <div class="group-points">${groupTotals.get(group) || 0} pts</div>
             </div>
         `).join('') + `</div>`;
