@@ -561,7 +561,13 @@ function renderDashboardPoints(studentLeaderboard, groupTotals) {
     const topBoysList = document.getElementById('top-boys-students-list');
     const groupPointsList = document.getElementById('group-points-list');
     const groupPointsCards = document.getElementById('group-points-cards');
-    const createTopBadge = rank => rank > 0 && rank <= 3 ? `<span style="display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 8px;border-radius:999px;background:#fff7cc;color:#8a5a00;font-size:0.8em;font-weight:900;vertical-align:middle;">⭐ ${rank}</span>` : '';
+    const createTopBadge = rank => rank > 0 && rank <= 3 ? `<span style="display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;padding:3px 9px;border-radius:999px;background:linear-gradient(180deg,#0f172a 0%,#1d4ed8 100%);color:#fff;border:2px solid #fbbf24;font-size:0.82em;font-weight:900;line-height:1;box-shadow:0 4px 10px rgba(15,23,42,0.18);">⭐ ${rank}</span>` : '';
+
+    const getStudentKey = student => `${student.className}||${student.fullName}||${student.group || ''}||${student.points}`;
+    const topStudents = [...studentLeaderboard]
+        .sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName) || a.className.localeCompare(b.className))
+        .slice(0, 3);
+    const topStudentRanks = new Map(topStudents.map((student, index) => [getStudentKey(student), index + 1]));
 
     const filteredStudents = dashboardSelectedGroup
         ? studentLeaderboard.filter(student => (student.group || '') === dashboardSelectedGroup)
@@ -573,7 +579,10 @@ function renderDashboardPoints(studentLeaderboard, groupTotals) {
         topGirlsList.innerHTML = top10Girls.length ? top10Girls.map((student, index) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
                 <div style="min-width:0">
-                    <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}${createTopBadge(index + 1)}</div>
+                    <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                        ${createTopBadge(topStudentRanks.get(getStudentKey(student)) || 0)}
+                        <span style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</span>
+                    </div>
                     <div style="color:#666;font-size:0.85em;margin-top:4px;">${student.className}${student.group ? ` • ${student.group}` : ''}</div>
                 </div>
                 <div style="font-weight:800;color:#0f172a;margin-left:12px;">${student.points} pts</div>
@@ -587,7 +596,10 @@ function renderDashboardPoints(studentLeaderboard, groupTotals) {
         topBoysList.innerHTML = top10Boys.length ? top10Boys.map((student, index) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;">
                 <div style="min-width:0">
-                    <div style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}${createTopBadge(index + 1)}</div>
+                    <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                        ${createTopBadge(topStudentRanks.get(getStudentKey(student)) || 0)}
+                        <span style="font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${student.fullName}</span>
+                    </div>
                     <div style="color:#666;font-size:0.85em;margin-top:4px;">${student.className}${student.group ? ` • ${student.group}` : ''}</div>
                 </div>
                 <div style="font-weight:800;color:#0f172a;margin-left:12px;">${student.points} pts</div>
@@ -602,7 +614,10 @@ function renderDashboardPoints(studentLeaderboard, groupTotals) {
     if (groupPointsList) {
         groupPointsList.innerHTML = rankedGroups.map(group => `
             <div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee;">
-                <strong>${group || 'Unassigned'}${createTopBadge(topGroupRanks.get(group) || 0)}</strong>
+                <strong style="display:flex;align-items:center;gap:8px;min-width:0;">
+                    ${createTopBadge(topGroupRanks.get(group) || 0)}
+                    <span style="min-width:0;">${group || 'Unassigned'}</span>
+                </strong>
                 <span style="font-weight: 700; color: #2e7d32;">${groupTotals.get(group) || 0} pts</span>
             </div>
         `).join('');
@@ -611,7 +626,10 @@ function renderDashboardPoints(studentLeaderboard, groupTotals) {
     if (groupPointsCards) {
         groupPointsCards.innerHTML = `<div class="group-cards-grid">` + GROUP_OPTIONS.map(group => `
             <div class="group-card" data-group="${(group || '').replace(/"/g, '&quot;')}">
-                <div class="group-name">${group || 'Unassigned'}${createTopBadge(topGroupRanks.get(group) || 0)}</div>
+                <div class="group-name" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
+                    ${createTopBadge(topGroupRanks.get(group) || 0)}
+                    <span>${group || 'Unassigned'}</span>
+                </div>
                 <div class="group-points">${groupTotals.get(group) || 0} pts</div>
             </div>
         `).join('') + `</div>`;
