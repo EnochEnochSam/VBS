@@ -1525,7 +1525,7 @@ let currentGoogleUser = null;
 let pendingPostLoginAction = 'home';
 // Dashboard selected group filter (null = show all)
 let dashboardSelectedGroup = null;
-let dashboardActiveTab = 'attendance';
+let dashboardActiveTab = 'points';
 
 function showAdminLogin() {
     console.log('showAdminLogin called');
